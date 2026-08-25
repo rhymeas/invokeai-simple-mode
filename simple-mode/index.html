@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InvokeAI Simple Mode</title>
+    <link rel="icon" href="/icon-source" />
+    <link rel="stylesheet" href="/styles.css?v=node-nav-20260824-19" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <img src="/icon-source" alt="" class="brand-mark" onerror="this.style.display='none'" />
+          <div>
+            <h1>InvokeAI Simple Mode</h1>
+            <p>Main image, references, prompt, four variants.</p>
+          </div>
+        </div>
+        <div class="workspace-switcher" aria-label="Workspaces">
+          <select id="workspaceSelect" title="Open workspace" aria-label="Open workspace"></select>
+          <input id="workspaceName" type="text" maxlength="80" value="Untitled workspace" aria-label="Workspace name" />
+          <button id="newWorkspace" type="button" title="New workspace" aria-label="New workspace">+</button>
+          <span id="saveStatus" class="save-status">Loading</span>
+        </div>
+        <div class="top-actions">
+          <a href="http://127.0.0.1:9090" target="_blank" rel="noreferrer">Open InvokeAI</a>
+          <span id="serverStatus" class="status-pill">Checking</span>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="input-rail">
+          <div class="slot main-slot" data-slot="0">
+            <input type="file" accept="image/*" />
+            <div class="empty">
+              <strong>@1 Main image</strong>
+              <span>Drop or click to upload</span>
+              <em>Choose image</em>
+            </div>
+          </div>
+
+          <div class="refs-header">
+            <span>References</span>
+            <small>up to 4</small>
+          </div>
+
+          <div id="refSlots" class="ref-slots"></div>
+        </aside>
+
+        <section class="canvas-area">
+          <div class="canvas-title">
+            <div>
+              <span>Canvas</span>
+              <small id="modelHint">FLUX.2 Klein 9B, queued sequentially</small>
+            </div>
+            <div class="canvas-tools">
+              <button id="zoomOut" type="button" title="Zoom out">-</button>
+              <span id="zoomValue">100%</span>
+              <button id="zoomIn" type="button" title="Zoom in">+</button>
+              <button id="resetView" type="button">Reset</button>
+              <button id="autoLayout" type="button">Layout</button>
+              <button id="deleteSelected" type="button" title="Delete selected images or nodes" disabled>Del</button>
+              <button id="openBlocks" type="button">Blocks</button>
+            </div>
+          </div>
+          <div id="canvasViewport" class="canvas-viewport">
+            <input id="canvasUpload" class="canvas-upload-input" type="file" accept="image/*" multiple />
+            <button id="canvasAddNode" class="canvas-add-node" type="button" title="Add node" aria-label="Add node">+</button>
+            <div id="blockMenu" class="block-menu" hidden>
+              <div class="block-search">
+                <input id="blockSearch" placeholder="What are you creating?" />
+                <button id="closeBlocks" type="button">×</button>
+              </div>
+              <div class="block-group-label">Basic blocks</div>
+              <button class="block-choice" data-block="modify" type="button"><span>⌕</span>Modify</button>
+              <button class="block-choice" data-block="variate" type="button"><span>⇄</span>Variate</button>
+              <button class="block-choice" data-block="extract" type="button"><span>▱</span>Extract</button>
+              <button class="block-choice disabled" data-block="animate" type="button" title="Needs a local video model"><span>◇</span>Animate</button>
+              <div class="block-group-label">Image actions</div>
+              <button class="block-choice" data-block="variate-form-color" type="button"><span>⇄</span>Variate form and color</button>
+              <button class="block-choice" data-block="new-view" type="button"><span>◎</span>New view</button>
+              <button class="block-choice" data-block="change-expression" type="button"><span>☻</span>Change expression</button>
+              <div class="block-group-label native-library-title">Native InvokeAI</div>
+              <div id="nativeFeatureList" class="native-feature-list">
+                <div class="native-loading">Loading native InvokeAI nodes...</div>
+              </div>
+            </div>
+            <div id="canvasContent" class="canvas-content">
+              <svg id="connectionLayer" class="connection-layer" viewBox="0 0 1200 820" aria-hidden="true"></svg>
+              <div id="nodeLayer" class="node-layer"></div>
+              <div id="canvasHint" class="canvas-empty">Drop @1 and reference images here.</div>
+            </div>
+          </div>
+          <div id="uploadStatus" class="upload-status">Ready for images</div>
+          <div class="results-title">
+            <span>Outputs</span>
+            <button id="toggleOutputs" class="strip-toggle" type="button">Strip</button>
+          </div>
+          <div id="resultsGrid" class="results-grid"></div>
+        </section>
+
+        <aside class="control-panel">
+          <div class="prompt-panel">
+            <div class="panel-title">Modify</div>
+            <div id="tokenRow" class="token-row"></div>
+            <div id="prompt" class="prompt-editor" contenteditable="true" spellcheck="true">Use <span class="prompt-mention">@1</span> as the main image. Bring in the lighting, material feel, and mood from <span class="prompt-mention">@2</span>. Keep the composition and important geometry from <span class="prompt-mention">@1</span>.</div>
+            <div class="prompt-tools">
+              <button id="insertMain" type="button">@1 main</button>
+              <button id="insertRef" type="button">@2 ref</button>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Aspect Ratio</span>
+            <select id="aspect">
+              <option value="original">Original</option>
+              <option value="1:1">Square 1:1</option>
+              <option value="16:9">Landscape 16:9</option>
+              <option value="21:9">Landscape 21:9</option>
+              <option value="9:16">Portrait 9:16</option>
+              <option value="3:4">Portrait 3:4</option>
+              <option value="4:3">Classic 4:3</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Mode</span>
+            <select id="mode">
+              <option value="pro" selected>Pro - full steps</option>
+              <option value="draft">Draft - fast 4-step preview</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Steps</span>
+            <select id="steps">
+              <option value="4">4 fast</option>
+              <option value="8" selected>8 balanced</option>
+              <option value="12">12 detail</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Output</span>
+            <select id="count">
+              <option value="1">1 image</option>
+              <option value="2">2 images</option>
+              <option value="4" selected>4 images</option>
+            </select>
+          </label>
+
+          <button id="generate" class="generate-button" type="button">Generate 4</button>
+          <p class="note">Jobs are queued one after another, so the 9B model is not run in parallel.</p>
+        </aside>
+      </section>
+    </main>
+
+    <script src="/app.js?v=node-nav-20260824-19"></script>
+  </body>
+</html>

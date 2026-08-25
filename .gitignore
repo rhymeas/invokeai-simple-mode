@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+*.log
+*.pyc
+__pycache__/
+.venv/
+dist/
+release/
+simple-mode/workspaces/
+*.zip
+*.sha256

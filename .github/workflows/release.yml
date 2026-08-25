@@ -1,0 +1,40 @@
+name: Build release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build launcher
+        shell: cmd
+        run: launcher-src\Build-Launcher.cmd "%GITHUB_WORKSPACE%\dist"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $packageName = "InvokeAI-Simple-Mode-v$version"
+          $packageRoot = Join-Path $PWD "release\$packageName"
+          New-Item -ItemType Directory -Path $packageRoot | Out-Null
+          Copy-Item simple-mode, launcher-src, assets, dist -Destination $packageRoot -Recurse
+          Copy-Item Install.ps1, Uninstall.ps1, README.md, CHANGELOG.md, RELEASE_NOTES.md, SECURITY.md, THIRD_PARTY_NOTICES.md, LICENSE, NOTICE, VERSION -Destination $packageRoot
+          Compress-Archive -Path $packageRoot -DestinationPath "release\$packageName.zip" -CompressionLevel Optimal
+          $hash = (Get-FileHash "release\$packageName.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $packageName.zip" | Set-Content "release\$packageName.zip.sha256" -Encoding ascii
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            release/*.zip
+            release/*.sha256
