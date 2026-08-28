@@ -560,11 +560,11 @@ async function initializeWorkspaces() {
   }
 }
 const defaultPositions = [
-  { x: 55, y: 214 },
-  { x: 372, y: 70 },
-  { x: 372, y: 260 },
-  { x: 372, y: 450 },
-  { x: 605, y: 170 },
+  { x: 48, y: 200 },
+  { x: 340, y: 30 },
+  { x: 340, y: 200 },
+  { x: 340, y: 370 },
+  { x: 48, y: 430 },
 ];
 
 const blockDefaults = {
@@ -1228,7 +1228,7 @@ function upsertNode(slot) {
   setSelection([imageEndpoint(slot)]);
   connectSlotToSimpleBlocks(slot);
   if (slot === 0 && !state.blocks.length) {
-    addBlock('modify', { x: 410, y: 160 }, imageEndpoint(0));
+    addBlock('modify', { x: 560, y: 145 }, imageEndpoint(0));
   }
 }
 
@@ -1254,50 +1254,87 @@ function renderTokens() {
   });
 }
 
+function connectorSideForEndpoint(endpoint) {
+  const box = endpointBox(endpoint);
+  if (!box) return 'right';
+  const targets = state.edges
+    .filter((edge) => edge.from === endpoint)
+    .map((edge) => endpointBox(edge.to))
+    .filter(Boolean);
+  if (!targets.length) return 'right';
+  const targetCenter = targets.reduce((sum, target) => sum + target.x + target.w / 2, 0) / targets.length;
+  return targetCenter < box.x + box.w / 2 ? 'left' : 'right';
+}
+
+function endpointAnchor(endpoint, role, otherBox = null, sideOverride = null) {
+  const box = endpointBox(endpoint);
+  if (!box) return null;
+  let side = sideOverride;
+  if (!side) {
+    if (role === 'source' && ['image', 'output'].includes(box.kind)) {
+      side = connectorSideForEndpoint(endpoint);
+    } else if (role === 'target' && box.kind === 'block') {
+      side = 'left';
+    } else if (otherBox) {
+      side = otherBox.x + otherBox.w / 2 < box.x + box.w / 2 ? 'left' : 'right';
+    } else {
+      side = role === 'target' ? 'left' : 'right';
+    }
+  }
+  return {
+    x: side === 'left' ? box.x : box.x + box.w,
+    y: box.y + box.h / 2,
+    direction: side === 'left' ? -1 : 1,
+    side,
+  };
+}
+
+function connectionCurve(from, to) {
+  const distance = Math.abs(to.x - from.x);
+  const curve = Math.max(40, Math.min(160, distance * 0.35));
+  const c1 = { x: from.x + from.direction * curve, y: from.y };
+  const c2 = { x: to.x + to.direction * curve, y: to.y };
+  return {
+    d: `M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`,
+    midpoint: {
+      x: (from.x + 3 * c1.x + 3 * c2.x + to.x) / 8,
+      y: (from.y + 3 * c1.y + 3 * c2.y + to.y) / 8,
+    },
+  };
+}
+
 function renderConnections() {
   updateCanvasGeometry();
   connectionLayer.innerHTML = '';
   state.edges.forEach((edge, edgeIndex) => {
-    const from = endpointBox(edge.from);
-    const to = endpointBox(edge.to);
-    if (!from || !to) return;
-    const x1 = from.x + from.w;
-    const y1 = from.y + from.h / 2;
-    const x2 = to.x;
-    const y2 = to.y + to.h / 2;
-    const curve = Math.max(90, Math.abs(x2 - x1) * 0.45);
-    const d = `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`;
+    const fromBox = endpointBox(edge.from);
+    const toBox = endpointBox(edge.to);
+    if (!fromBox || !toBox) return;
+    const from = endpointAnchor(edge.from, 'source', toBox);
+    const to = endpointAnchor(edge.to, 'target', fromBox);
+    const curve = connectionCurve(from, to);
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.classList.add('connection-group');
     group.dataset.edgeIndex = edgeIndex;
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.classList.add('connection-path');
-    path.setAttribute('d', d);
+    path.setAttribute('d', curve.d);
     group.appendChild(path);
     const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     hit.classList.add('connection-hit');
-    hit.setAttribute('d', d);
+    hit.setAttribute('d', curve.d);
     group.appendChild(hit);
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     dot.classList.add('connection-dot');
-    dot.setAttribute('cx', x2);
-    dot.setAttribute('cy', y2);
+    dot.setAttribute('cx', to.x);
+    dot.setAttribute('cy', to.y);
     dot.setAttribute('r', '4');
     group.appendChild(dot);
 
     const remove = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     remove.classList.add('connection-remove');
     remove.dataset.edgeIndex = edgeIndex;
-    const visibleLeft = (-state.view.x / state.view.scale) + 18;
-    const visibleRight = ((canvasViewport.clientWidth - state.view.x) / state.view.scale) - 18;
-    const visibleTop = (-state.view.y / state.view.scale) + 18;
-    const visibleBottom = ((canvasViewport.clientHeight - state.view.y) / state.view.scale) - 18;
-    let removeX = Math.min(visibleRight, Math.max(visibleLeft, x2 - 28));
-    const removeY = Math.min(visibleBottom, Math.max(visibleTop, y2));
-    if (removeX >= to.x && removeX <= to.x + to.w && removeY >= to.y && removeY <= to.y + to.h) {
-      removeX = Math.min(visibleRight, to.x + to.w + 18);
-    }
-    remove.setAttribute('transform', `translate(${removeX} ${removeY})`);
+    remove.setAttribute('transform', `translate(${curve.midpoint.x} ${curve.midpoint.y})`);
     const removeCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     removeCircle.setAttribute('r', '10');
     const removeText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -1309,16 +1346,19 @@ function renderConnections() {
     connectionLayer.appendChild(group);
   });
   if (state.connectDrag) {
-    const from = endpointBox(state.connectDrag.from);
-    if (!from) return;
-    const x1 = from.x + from.w;
-    const y1 = from.y + from.h / 2;
-    const x2 = state.connectDrag.current.x;
-    const y2 = state.connectDrag.current.y;
-    const curve = Math.max(70, Math.abs(x2 - x1) * 0.45);
+    const fromBox = endpointBox(state.connectDrag.from);
+    if (!fromBox) return;
+    const from = endpointAnchor(state.connectDrag.from, 'source', null, state.connectDrag.side);
+    const targetSide = state.connectDrag.current.x < from.x ? 'right' : 'left';
+    const to = {
+      x: state.connectDrag.current.x,
+      y: state.connectDrag.current.y,
+      direction: targetSide === 'left' ? -1 : 1,
+    };
+    const curve = connectionCurve(from, to);
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.classList.add('draft-connection');
-    path.setAttribute('d', `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`);
+    path.setAttribute('d', curve.d);
     connectionLayer.appendChild(path);
   }
 }
@@ -1499,8 +1539,8 @@ function addBlock(kind, position = null, sourceEndpoint = null) {
     nativeSettings: Object.fromEntries((config.nativeFeature?.settings || []).map((setting) => [setting.name, setting.default])),
     sourceOrder: [],
     hiddenSources: [],
-    x: position?.x ?? 410,
-    y: position?.y ?? 160,
+    x: position?.x ?? 560,
+    y: position?.y ?? 145,
     w: config.nativeFeature ? 370 : kind === 'animate' ? 390 : specialized ? 360 : 340,
     h: config.nativeFeature ? 260 : kind === 'animate' ? 390 : specialized ? 410 : 300,
   };
@@ -1932,6 +1972,7 @@ function renderOutputNode(output) {
   element.style.width = `${output.w || 178}px`;
   element.style.height = `${output.h || 154}px`;
   const label = output.label || 'Output';
+  const connectorSide = connectorSideForEndpoint(endpoint);
   if (mediaUrl(output.image)) {
     const video = isVideo(output.image);
     element.innerHTML = `
@@ -1945,7 +1986,7 @@ function renderOutputNode(output) {
         ${video ? '' : '<button data-image-action="upscale" type="button" title="Upscale and download">2×</button>'}
         <button data-image-action="download" type="button" title="Download">↓</button>
       </div>
-      <button class="node-connect${state.connectFrom === endpoint ? ' active' : ''}" type="button" title="Connect result to a node"></button>
+      <button class="node-connect ${connectorSide}${state.connectFrom === endpoint ? ' active' : ''}" data-connect-side="${connectorSide}" type="button" title="Connect result to a node"></button>
     `;
   } else {
     const failed = output.status === 'failed' || output.status === 'canceled';
@@ -1992,6 +2033,7 @@ function renderCanvas() {
       const tokenLabel = node.slot === 0 ? '@1 MAIN' : `@${node.slot + 1}`;
       const roleLabel = image.pending ? 'uploading' : (node.slot === 0 ? 'MAIN SOURCE' : roleFor(node.slot));
       const insertLabel = node.slot === 0 ? 'MAIN @1' : `@${node.slot + 1}`;
+      const connectorSide = connectorSideForEndpoint(endpoint);
       element.innerHTML = `
         <button class="canvas-item-delete" data-delete-endpoint="${endpoint}" type="button" title="Delete image from canvas">×</button>
         <div class="node-head"><span>${tokenLabel}</span><span>${roleLabel}</span></div>
@@ -2005,7 +2047,7 @@ function renderCanvas() {
           <button data-image-action="upscale" type="button" title="Upscale and download">2×</button>
           <button data-image-action="download" type="button" title="Download">↓</button>
         </div>`}
-        <button class="node-connect${state.connectFrom === imageEndpoint(node.slot) ? ' active' : ''}" type="button" title="Connect"></button>
+        <button class="node-connect ${connectorSide}${state.connectFrom === endpoint ? ' active' : ''}" data-connect-side="${connectorSide}" type="button" title="Connect"></button>
         <span class="resize-handle nw" data-resize="nw"></span>
         <span class="resize-handle ne" data-resize="ne"></span>
         <span class="resize-handle sw" data-resize="sw"></span>
@@ -2599,6 +2641,25 @@ function syncModeControls() {
   syncModernSelect(steps);
 }
 
+function compactOutputPosition(sourceEndpoint, sequence = 0, columns = 2) {
+  const source = endpointBox(sourceEndpoint);
+  const blockRight = state.blocks.reduce((right, block) => Math.max(right, block.x + (block.w || 340)), 0);
+  const sourceRight = source ? source.x + source.w : 690;
+  const baseX = source?.kind === 'image'
+    ? Math.max(sourceRight + 72, blockRight ? blockRight + 72 : sourceRight + 72)
+    : sourceRight + 72;
+  const baseY = source?.y ?? 110;
+  return {
+    x: baseX + (sequence % columns) * 190,
+    y: baseY + Math.floor(sequence / columns) * 168,
+  };
+}
+
+function outputSequenceForSource(sourceEndpoint) {
+  if (!sourceEndpoint) return state.outputs.length;
+  return state.edges.filter((edge) => edge.from === sourceEndpoint && endpointType(edge.to) === 'output').length;
+}
+
 function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'image', options = {}) {
   resultsGrid.innerHTML = '';
   const sourceEndpoint = sourceEndpointOverride || (state.selected && endpointType(state.selected) === 'block'
@@ -2613,21 +2674,22 @@ function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'ima
       && output.focusQuality === options.outputMeta.focusQuality
     )).length
     : 0;
-  const source = endpointBox(sourceEndpoint);
-  const created = ids.map((id, index) => ({
-    id: String(id),
-    itemId: id,
-    label: options.labelPrefix
-      ? `${options.labelPrefix} ${labelOffset + index + 1}`
-      : (outputKind === 'video' ? `Video ${index + 1}` : `Variant ${index + 1}`),
-    status: 'queued',
-    x: source ? source.x + source.w + 210 + (index % 2) * 188 : 790 + (index % 2) * 188,
-    y: source ? source.y + Math.floor((previousCount + index) / 2) * 170 : 110 + Math.floor((previousCount + index) / 2) * 190,
-    w: 168,
-    h: 146,
-    image: null,
-    ...(options.outputMeta || {}),
-  }));
+  const created = ids.map((id, index) => {
+    const position = compactOutputPosition(sourceEndpoint, previousCount + index);
+    return {
+      id: String(id),
+      itemId: id,
+      label: options.labelPrefix
+        ? `${options.labelPrefix} ${labelOffset + index + 1}`
+        : (outputKind === 'video' ? `Video ${index + 1}` : `Variant ${index + 1}`),
+      status: 'queued',
+      ...position,
+      w: 168,
+      h: 146,
+      image: null,
+      ...(options.outputMeta || {}),
+    };
+  });
   state.outputs = options.append ? [...state.outputs, ...created] : created;
   created.forEach((output) => addEdge(sourceEndpoint, outputEndpoint(output.id)));
   ids.forEach((id, index) => {
@@ -2968,17 +3030,16 @@ function replaceGalleryOutputs(block, images) {
   const previous = new Set(block.nativeOutputIds || []);
   state.outputs = state.outputs.filter((output) => !previous.has(output.id));
   state.edges = state.edges.filter((edge) => !previous.has(endpointId(edge.from)) && !previous.has(endpointId(edge.to)));
-  const source = endpointBox(blockEndpoint(block.id));
   const createdAt = Date.now();
   block.nativeOutputIds = (images || []).map((image, index) => {
     const id = `gallery-${createdAt}-${index}`;
+    const position = compactOutputPosition(blockEndpoint(block.id), index);
     state.outputs.push({
       id,
       itemId: id,
       label: `Recent ${index + 1}`,
       status: 'completed',
-      x: (source?.x || block.x) + (source?.w || block.w || 370) + 170 + (index % 3) * 190,
-      y: (source?.y || block.y) + Math.floor(index / 3) * 172,
+      ...position,
       w: 168,
       h: 146,
       image,
@@ -3156,14 +3217,13 @@ function triggerDownload(media) {
 
 function createCompletedOutput(image, label, sourceEndpoint = null) {
   const id = `local-${Date.now()}-${Math.round(Math.random() * 10000)}`;
-  const source = endpointBox(sourceEndpoint);
+  const position = compactOutputPosition(sourceEndpoint, outputSequenceForSource(sourceEndpoint));
   const output = {
     id,
     itemId: id,
     label,
     status: 'completed',
-    x: source ? source.x + source.w + 210 : 790,
-    y: source ? source.y : 110 + state.outputs.length * 34,
+    ...position,
     w: 168,
     h: 146,
     image,
@@ -3317,6 +3377,8 @@ function activateFocusLayer(layerId) {
   focus.selectedMedia = layer.id === focus.layers[0]?.id ? null : layer.media;
   focus.label = layer.label;
   focus.zoom = 1;
+  focus.panX = 0;
+  focus.panY = 0;
   focus.variantIds = [];
   clearFocusMask();
   saveFocusCollections();
@@ -3338,6 +3400,8 @@ function toggleFocusLayerVisibility(layerId) {
       focus.selectedMedia = fallback.id === focus.layers[0]?.id ? null : fallback.media;
       focus.label = fallback.label;
       focus.zoom = 1;
+      focus.panX = 0;
+      focus.panY = 0;
       focus.variantIds = [];
       clearFocusMask();
     }
@@ -3377,6 +3441,8 @@ function deleteFocusLayer(layerId) {
       focus.selectedMedia = fallback.id === focus.layers[0]?.id ? null : fallback.media;
       focus.label = fallback.label;
       focus.zoom = 1;
+      focus.panX = 0;
+      focus.panY = 0;
       focus.variantIds = [];
       clearFocusMask();
     }
@@ -3406,6 +3472,9 @@ function openFocus(endpoint) {
     image: activeLayer.media,
     label: activeLayer.label,
     zoom: 1,
+    panX: 0,
+    panY: 0,
+    panMode: false,
     mode: 'direct',
     maskDirty: false,
     selectedMedia: activeLayer.id === history.layers[0].id ? null : activeLayer.media,
@@ -3442,13 +3511,14 @@ function ensureFocusView() {
     <div class="focus-topbar">
       <button data-focus-action="back" type="button">Back</button>
       <div class="focus-title">
-        <strong id="focusTitle">Image</strong>
+        <strong id="focusTitle" tabindex="0" title="Double-click to rename">Image</strong>
         <span id="focusMeta">Ready</span>
       </div>
       <div class="focus-actions">
         <button data-focus-action="zoom-out" type="button">-</button>
         <span id="focusZoom">100%</span>
         <button data-focus-action="zoom-in" type="button">+</button>
+        <button id="focusPanButton" data-focus-action="toggle-pan" type="button" title="Pan image" aria-label="Pan image">✥</button>
         <button data-focus-action="use-main" data-image-only type="button">Use as @1</button>
         <button data-focus-action="upscale" data-image-only type="button">2x upscale</button>
         <button data-focus-action="download" type="button">Download</button>
@@ -3511,15 +3581,23 @@ function ensureFocusView() {
   });
   wireFocusMask(view);
   wireFocusZoom(view);
+  wireFocusPan(view);
+  wireFocusTitleEditing(view);
   return view;
+}
+
+function applyFocusTransform() {
+  if (!state.focus) return;
+  const wrap = ensureFocusView().querySelector('#focusMediaWrap');
+  if (!wrap) return;
+  wrap.style.transform = `translate3d(${state.focus.panX || 0}px, ${state.focus.panY || 0}px, 0) scale(${state.focus.zoom || 1})`;
 }
 
 function setFocusZoom(value) {
   if (!state.focus) return;
   state.focus.zoom = Math.max(0.2, Math.min(4, Number(value) || 1));
   const view = ensureFocusView();
-  const wrap = view.querySelector('#focusMediaWrap');
-  if (wrap) wrap.style.transform = `scale(${state.focus.zoom})`;
+  applyFocusTransform();
   const label = view.querySelector('#focusZoom');
   if (label) label.textContent = `${Math.round(state.focus.zoom * 100)}%`;
 }
@@ -3533,6 +3611,113 @@ function wireFocusZoom(view) {
     const delta = Math.max(-60, Math.min(60, event.deltaY));
     setFocusZoom((state.focus.zoom || 1) * Math.exp(-delta * 0.003));
   }, { passive: false });
+}
+
+function wireFocusPan(view) {
+  const stage = view.querySelector('.focus-stage-scroll');
+  const finish = (event) => {
+    const drag = state.focus?.panDrag;
+    if (!drag || (event && drag.pointerId !== event.pointerId)) return;
+    try { stage.releasePointerCapture(drag.pointerId); } catch (_) {}
+    state.focus.panDrag = null;
+    stage.classList.remove('is-panning');
+  };
+  stage.addEventListener('pointerdown', (event) => {
+    if (!state.focus) return;
+    const middleDrag = event.button === 1;
+    const toolDrag = event.button === 0 && state.focus.panMode;
+    if (!middleDrag && !toolDrag) return;
+    state.focus.panDrag = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      panX: state.focus.panX || 0,
+      panY: state.focus.panY || 0,
+    };
+    stage.setPointerCapture(event.pointerId);
+    stage.classList.add('is-panning');
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  stage.addEventListener('pointermove', (event) => {
+    const drag = state.focus?.panDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    state.focus.panX = drag.panX + event.clientX - drag.x;
+    state.focus.panY = drag.panY + event.clientY - drag.y;
+    applyFocusTransform();
+    event.preventDefault();
+  });
+  stage.addEventListener('pointerup', finish);
+  stage.addEventListener('pointercancel', finish);
+  stage.addEventListener('auxclick', (event) => {
+    if (event.button === 1) event.preventDefault();
+  });
+}
+
+function commitFocusTitle(title, originalTitle = '') {
+  const focus = state.focus;
+  const layer = activeFocusLayer();
+  if (!focus || !layer) return;
+  const next = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80) || originalTitle || layer.label;
+  layer.label = next;
+  focus.label = next;
+  if (layer.outputId) {
+    const output = state.outputs.find((item) => String(item.id) === String(layer.outputId));
+    if (output) output.label = next;
+  } else if (endpointType(focus.originalEndpoint) === 'output') {
+    const output = state.outputs.find((item) => String(item.id) === String(endpointId(focus.originalEndpoint)));
+    if (output && layer === focus.layers[0]) output.label = next;
+  }
+  saveFocusCollections();
+  renderFocusLayers();
+  scheduleAutosave();
+}
+
+function wireFocusTitleEditing(view) {
+  const title = view.querySelector('#focusTitle');
+  title.addEventListener('dblclick', (event) => {
+    if (!state.focus || title.isContentEditable) return;
+    title.dataset.originalTitle = title.textContent;
+    title.contentEditable = 'true';
+    title.classList.add('editing');
+    title.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(title);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  title.addEventListener('keydown', (event) => {
+    if (!title.isContentEditable) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      title.blur();
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      title.textContent = title.dataset.originalTitle || title.textContent;
+      title.dataset.cancelEdit = 'true';
+      title.blur();
+    }
+  });
+  title.addEventListener('blur', () => {
+    if (!title.isContentEditable) return;
+    const original = title.dataset.originalTitle || '';
+    const canceled = title.dataset.cancelEdit === 'true';
+    title.contentEditable = 'false';
+    title.classList.remove('editing');
+    delete title.dataset.originalTitle;
+    delete title.dataset.cancelEdit;
+    if (canceled) {
+      title.textContent = original;
+      return;
+    }
+    commitFocusTitle(title.textContent, original);
+    title.textContent = state.focus?.label || original;
+    setUploadStatus(`${title.textContent} renamed.`);
+  });
 }
 
 function setFocusBusy(busy, text = '') {
@@ -3611,7 +3796,7 @@ function wireFocusMask(view) {
     state.focus.maskDirty = true;
   };
   canvas.addEventListener('pointerdown', (event) => {
-    if (state.focus?.mode !== 'inpaint') return;
+    if (event.button !== 0 || state.focus?.mode !== 'inpaint' || state.focus?.panMode) return;
     canvas.setPointerCapture(event.pointerId);
     state.focus.maskPointerId = event.pointerId;
     draw(event, true);
@@ -3735,7 +3920,8 @@ function renderFocusView() {
   if (!focus) return;
   const videoFocus = isVideo(focus.image);
   view.classList.toggle('video-focus', videoFocus);
-  view.querySelector('#focusTitle').textContent = focus.label || (videoFocus ? 'Video' : 'Image');
+  const title = view.querySelector('#focusTitle');
+  if (!title.isContentEditable) title.textContent = focus.label || (videoFocus ? 'Video' : 'Image');
   view.querySelector('#focusMeta').textContent = focus.image?.video_name || focus.image?.image_name || 'Ready';
   view.querySelector('#focusZoom').textContent = `${Math.round((focus.zoom || 1) * 100)}%`;
   const img = view.querySelector('#focusImage');
@@ -3753,7 +3939,12 @@ function renderFocusView() {
     img.onload = syncFocusMediaSize;
     if (img.complete) syncFocusMediaSize();
   }
-  wrap.style.transform = `scale(${focus.zoom || 1})`;
+  applyFocusTransform();
+  const stageScroll = view.querySelector('.focus-stage-scroll');
+  stageScroll.classList.toggle('pan-enabled', Boolean(focus.panMode));
+  const panButton = view.querySelector('#focusPanButton');
+  panButton.classList.toggle('active', Boolean(focus.panMode));
+  panButton.setAttribute('aria-pressed', String(Boolean(focus.panMode)));
   view.querySelectorAll('[data-image-only]').forEach((button) => { button.hidden = videoFocus; });
   view.querySelector('[data-focus-action="mode-direct"]')?.classList.toggle('active', focus.mode !== 'inpaint');
   view.querySelector('[data-focus-action="mode-inpaint"]')?.classList.toggle('active', focus.mode === 'inpaint');
@@ -4077,6 +4268,10 @@ function handleFocusAction(event) {
   if (action === 'zoom-out') {
     setFocusZoom((state.focus.zoom || 1) / 1.2);
   }
+  if (action === 'toggle-pan') {
+    state.focus.panMode = !state.focus.panMode;
+    renderFocusView();
+  }
   if (action === 'download') triggerDownload(state.focus.image);
   if (action === 'upscale') upscaleImage(state.focus.image, state.focus.endpoint, true);
   if (action === 'use-main') useFocusImageAsSlot(0);
@@ -4121,10 +4316,47 @@ function resetView() {
 
 function autoLayout() {
   state.nodes.forEach((node) => {
-    node.x = defaultPositions[node.slot].x;
-    node.y = defaultPositions[node.slot].y;
+    const position = defaultPositions[node.slot] || { x: 48, y: 200 + node.slot * 170 };
+    node.x = position.x;
+    node.y = position.y;
   });
+  state.blocks.forEach((block, index) => {
+    block.x = 560;
+    block.y = 120 + index * 450;
+  });
+  const outputCounts = new Map();
+  state.outputs.forEach((output) => {
+    const endpoint = outputEndpoint(output.id);
+    const sourceEndpoint = state.edges.find((edge) => edge.to === endpoint)?.from || null;
+    const key = sourceEndpoint || 'orphan';
+    const sequence = outputCounts.get(key) || 0;
+    outputCounts.set(key, sequence + 1);
+    const position = compactOutputPosition(sourceEndpoint, sequence);
+    output.x = position.x;
+    output.y = position.y;
+  });
+  fitCanvasToContent();
   renderCanvas();
+}
+
+function fitCanvasToContent() {
+  const boxes = [
+    ...state.nodes.map((node) => endpointBox(imageEndpoint(node.slot))),
+    ...state.blocks.map((block) => endpointBox(blockEndpoint(block.id))),
+    ...state.outputs.map((output) => endpointBox(outputEndpoint(output.id))),
+  ].filter(Boolean);
+  if (!boxes.length || !canvasViewport.clientWidth || !canvasViewport.clientHeight) return;
+  const minX = Math.min(...boxes.map((box) => box.x));
+  const minY = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.w));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.h));
+  const padding = 54;
+  const availableWidth = Math.max(240, canvasViewport.clientWidth - padding * 2);
+  const availableHeight = Math.max(220, canvasViewport.clientHeight - padding * 2);
+  const scale = Math.max(0.38, Math.min(0.9, availableWidth / Math.max(1, maxX - minX), availableHeight / Math.max(1, maxY - minY)));
+  state.view.scale = scale;
+  state.view.x = (canvasViewport.clientWidth - (maxX - minX) * scale) / 2 - minX * scale;
+  state.view.y = (canvasViewport.clientHeight - (maxY - minY) * scale) / 2 - minY * scale;
 }
 
 function finishPointerInteraction(pointerId = null) {
@@ -4529,6 +4761,7 @@ function wireCanvas() {
       state.connectDrag = {
         pointerId: event.pointerId,
         from: endpoint,
+        side: connectHandle.dataset.connectSide || 'right',
         startX: event.clientX,
         startY: event.clientY,
         current: point,

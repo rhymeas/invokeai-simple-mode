@@ -2,11 +2,12 @@
 
 An unofficial community interface for InvokeAI with an open node canvas, image and video generation, direct editing, multi-reference prompts, sequential variants, focus inpainting, upscaling, download, workspaces, and access to native InvokeAI actions.
 
-Version **1.4.0** is a Windows release tested with **InvokeAI 6.14.0**, **FLUX.2 Klein 9B and 4B**, and **Wan 2.2 TI2V-5B Q4**.
+Version **1.5.0** is a Windows release tested with **InvokeAI 6.14.0**, **FLUX.2 Klein 9B and 4B**, and **Wan 2.2 TI2V-5B Q4**.
 
 ## Highlights
 
 - Infinite pan and zoom canvas with movable image, action, and result nodes
+- Compact fit-to-view canvas layout with side-aware, stable connectors
 - Main image plus up to four ordered references
 - Drag, drop, connect, disconnect, reorder, and `@1` / `@2` prompt references
 - Reference roles for style, brand, object, lighting, and composition
@@ -16,7 +17,7 @@ Version **1.4.0** is a Windows release tested with **InvokeAI 6.14.0**, **FLUX.2
 - One to four variants queued sequentially to protect GPU memory
 - Compact installed-model selector with workspace persistence and automatic encoder matching
 - In-place node mode switching through the node back menu; the Canvas `+` creates separate nodes
-- Large focus view with direct edit, brush-based inpaint, focus-only references, persistent reversible version layers, visibility, reordering, deletion, 2x upscale, and direct download
+- Large focus view with direct edit, brush-based inpaint, image panning, editable version names, focus-only references, floating reversible version layers, visibility, reordering, deletion, 2x upscale, and direct download
 - Image-to-video and text-to-video nodes with playable MP4 result nodes
 - One-click optional Wan 2.2 model setup through InvokeAI's native model manager
 - Persistent named workspaces stored locally
@@ -38,7 +39,7 @@ Model weights are not included. FLUX.2 Klein 9B is separately licensed by Black 
 ## Install
 
 1. Install and run the official [InvokeAI](https://github.com/invoke-ai/InvokeAI) release once.
-2. Download and extract `InvokeAI-Simple-Mode-v1.4.0.zip` from this project's Releases page.
+2. Download and extract `InvokeAI-Simple-Mode-v1.5.0.zip` from this project's Releases page.
 3. Open PowerShell in the extracted folder.
 4. Run:
 
@@ -73,13 +74,13 @@ Use image 1 as the main composition, image 2 for the people, and image 3
 for the lighting and material finish.
 ```
 
-Double-click an image or result for Focus Edit. Scroll the mouse wheel over the image to zoom in or out, or use the plus and minus controls. Use **Direct edit** for a whole-image revision, or **Inpaint** to brush only the area that may change. Add up to four focus-only references, create quick 360p previews, choose one, and use **Render standard** below the preview or in the edit panel for an eight-step final render. Original, preview, standard, and upscaled versions remain in the Layers sidebar. Layers can be hidden, reordered, or removed from the version stack; the protected original remains available. Select any visible layer and go back; that version appears on the canvas without moving its connections.
+Double-click an image or result for Focus Edit. Double-click the displayed image title to rename that version without changing its saved InvokeAI filename. Scroll the mouse wheel over the image to zoom in or out, use the plus and minus controls, drag with the middle mouse button, or enable the Pan tool for left-button dragging. Use **Direct edit** for a whole-image revision, or **Inpaint** to brush only the area that may change. Add up to four focus-only references, create quick 360p previews, choose one, and use **Render standard** below the preview or in the edit panel for an eight-step final render. Original, preview, standard, and upscaled versions remain in the floating Layers panel. Layers can be hidden, reordered, or removed from the version stack; the protected original remains available. Select any visible layer and go back; that version appears on the canvas without moving its connections.
 
 Add a **Video** node for text-to-video, or connect an image first for image-to-video. Video jobs share InvokeAI's serial queue with image jobs, so FLUX and Wan are not loaded for simultaneous generation.
 
 ## Compatibility
 
-The v1.4.0 generation graphs target InvokeAI 6.14.0's FLUX.2 Klein and Wan 2.2 nodes. Native InvokeAI actions are discovered at runtime. InvokeAI updates may change node schemas; install newer versions with `-Force` only for testing.
+The v1.5.0 generation graphs target InvokeAI 6.14.0's FLUX.2 Klein and Wan 2.2 nodes. Native InvokeAI actions are discovered at runtime. InvokeAI updates may change node schemas; install newer versions with `-Force` only for testing.
 
 HiDream is optional and is not bundled. The launcher can switch to a separately installed HiDream O1 Dev web app, but HiDream output is not yet a native Simple Mode node.
 

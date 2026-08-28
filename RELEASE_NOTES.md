@@ -1,14 +1,14 @@
-# InvokeAI Simple Mode v1.4.0
+# InvokeAI Simple Mode v1.5.0
 
-This release turns Focus Edit's Layers sidebar into a controllable version stack. Generated layers can be hidden, shown, reordered, or removed while the original image remains protected. Hiding or deleting the active version automatically reveals the highest remaining visible version.
+This release improves Focus Edit and canvas organization. The top bar has more room, the active image version can be renamed by double-clicking its title, and Layers now float in a compact rounded panel instead of occupying the full left edge.
 
-When a 360p preview is selected, a compact **Render standard** action now appears directly below the image as well as in the edit panel. Reference thumbnails use a red remove state on hover or keyboard focus.
+Use the new Pan tool to move a zoomed image with the left mouse button, or hold and drag the middle mouse button at any time. Mouse-wheel zoom remains centered over the image, and panning is disabled automatically while painting an inpaint mask.
 
-Sequential FLUX.2 Klein previews now reuse InvokeAI's cached model-loader and reference-conditioning results when their inputs match. This reduces repeated setup work after the first job. The first preview can still take time because loading the selected model and encoding the source image are substantial operations even at 360p.
+Canvas Layout now arranges source images, action nodes, and results into a compact graph and fits it into the viewport. New results stay near their source. Image connectors automatically move to the side facing their connected node, producing shorter, stable curves without moving delete controls.
 
 ## Important
 
-- Windows 10/11 only for v1.4.0.
+- Windows 10/11 only for v1.5.0.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 - 2026-08-28
+
+- Added double-click renaming for the active image version in Focus Edit while keeping the underlying InvokeAI filename stable.
+- Reworked Focus Edit's Layers list into a floating rounded panel with responsive horizontal layers on narrow screens.
+- Added a Pan tool for left-button dragging and middle-mouse dragging while preserving wheel zoom and inpaint behavior.
+- Increased Focus Edit top-bar spacing and added a clear active state for the Pan tool.
+- Replaced widely spaced canvas defaults with a compact image, node, and result arrangement plus fit-to-view Layout behavior.
+- Added side-aware image and result connectors with bounded curves and stable connection-removal controls.
+- Changed connection removal to a red hover state.
+
 ## 1.4.0 - 2026-08-28
 
 - Added persistent visibility, reorder, and delete controls to Focus Edit's version layers while protecting the original image.

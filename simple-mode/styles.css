@@ -821,6 +821,16 @@ textarea {
   cursor: crosshair;
 }
 
+.node-connect.right {
+  right: -11px;
+  left: auto;
+}
+
+.node-connect.left {
+  right: auto;
+  left: -11px;
+}
+
 .node-connect.active {
   background: var(--accent);
 }
@@ -2208,7 +2218,7 @@ h1 {
   inset: 0;
   z-index: 100;
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr);
+  grid-template-rows: 70px minmax(0, 1fr);
   background: #070a0f;
   color: var(--text);
 }
@@ -2220,8 +2230,9 @@ h1 {
 .focus-topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  min-height: 70px;
+  gap: 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   background: rgba(12, 17, 25, 0.98);
 }
@@ -2245,7 +2256,25 @@ h1 {
 }
 
 .focus-title strong {
+  width: fit-content;
+  max-width: min(420px, 42vw);
+  padding: 2px 3px;
+  border: 1px solid transparent;
+  border-radius: 5px;
   font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.focus-title strong.editing {
+  min-width: 120px;
+  border-color: #5c5c62;
+  background: #202025;
+  outline: 0;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .focus-title span {
@@ -2272,19 +2301,28 @@ h1 {
 }
 
 .focus-main {
+  position: relative;
   min-height: 0;
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr) 310px;
+  grid-template-columns: minmax(0, 1fr) 310px;
 }
 
 .focus-layers {
+  position: absolute;
+  z-index: 12;
+  top: 16px;
+  left: 16px;
+  width: 190px;
+  max-height: calc(100% - 32px);
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 14px 10px;
-  border-right: 1px solid var(--border);
-  background: #0c0c0f;
+  border: 1px solid #36363b;
+  border-radius: 12px;
+  background: rgba(24, 24, 27, 0.96);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
   overflow: hidden;
 }
 
@@ -2504,6 +2542,7 @@ h1 {
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     #05070b;
   background-size: 28px 28px;
+  grid-column: 1;
 }
 
 .focus-stage-scroll {
@@ -2516,6 +2555,25 @@ h1 {
   padding: 20px 20px 96px;
   overflow: auto;
   box-sizing: border-box;
+}
+
+.focus-stage-scroll.pan-enabled {
+  cursor: grab;
+}
+
+.focus-stage-scroll.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.focus-stage-scroll.is-panning .focus-media-wrap {
+  transition: none;
+}
+
+#focusPanButton.active {
+  border-color: #706cf0;
+  background: #353447;
+  color: #fff;
 }
 
 .focus-stage img {
@@ -2533,6 +2591,7 @@ h1 {
   padding: 14px;
   border-left: 1px solid var(--border);
   background: #0c1119;
+  grid-column: 2;
   overflow: auto;
 }
 
@@ -3034,7 +3093,7 @@ textarea {
   }
 
   .focus-main {
-    grid-template-columns: 132px minmax(0, 1fr) 280px;
+    grid-template-columns: minmax(0, 1fr) 280px;
   }
 
   .canvas-area {
@@ -3740,14 +3799,15 @@ textarea {
 
   .focus-main {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(320px, 1fr) auto;
+    grid-template-rows: minmax(320px, 1fr) auto;
   }
 
   .focus-layers {
+    top: 10px;
+    left: 10px;
+    width: calc(100% - 20px);
     max-height: 104px;
     padding: 8px 10px;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
   }
 
   .focus-layers-header {
@@ -3772,6 +3832,8 @@ textarea {
   }
 
   .focus-panel {
+    grid-column: 1;
+    grid-row: 2;
     max-height: 42vh;
     border-top: 1px solid var(--border);
     border-left: 0;
@@ -3882,6 +3944,15 @@ textarea {
   font-size: 15px;
   font-weight: 700;
   pointer-events: none;
+}
+
+.connection-remove:hover circle {
+  fill: #5a2529;
+  stroke: #ff6670;
+}
+
+.connection-remove:hover text {
+  fill: #fff;
 }
 
 .canvas-node,
