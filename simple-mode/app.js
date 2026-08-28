@@ -1473,6 +1473,39 @@ function addBlock(kind, position = null, sourceEndpoint = null) {
   return block;
 }
 
+function switchBlockKind(block, kind) {
+  if (!block || !kind) return false;
+  if (block.kind === kind) {
+    block.menuOpen = false;
+    block.infoOpen = false;
+    renderCanvas();
+    return true;
+  }
+  const config = configForBlock(kind);
+  const specialized = isSpecializedNode(kind);
+  const existingPrompt = String(block.prompt || '');
+  block.kind = kind;
+  block.title = config.title;
+  block.icon = config.icon;
+  block.prompt = existingPrompt || (specialized ? '' : config.prompt);
+  block.nativeFeature = config.nativeFeature || null;
+  block.nativeSettings = Object.fromEntries(
+    (config.nativeFeature?.settings || []).map((setting) => [setting.name, setting.default]),
+  );
+  block.nodeSettings = specialized ? { ...specializedNodeDefaults[kind] } : null;
+  block.specializedVersion = specialized ? 1 : null;
+  block.videoSettings = kind === 'animate' ? {} : null;
+  block.w = config.nativeFeature ? 370 : kind === 'animate' ? 390 : specialized ? 360 : 340;
+  block.h = config.nativeFeature ? 260 : kind === 'animate' ? 390 : specialized ? 410 : 300;
+  block.menuOpen = false;
+  block.infoOpen = false;
+  setSelection([blockEndpoint(block.id)]);
+  setUploadStatus(`Node changed to ${config.title}.`);
+  renderCanvas();
+  scheduleAutosave();
+  return true;
+}
+
 function addEdge(from, to) {
   if (!from || !to || from === to) return;
   const exists = state.edges.some((edge) => edge.from === from && edge.to === to);
@@ -1676,8 +1709,8 @@ function renderBlockDetailsPopover(block) {
 function renderBlockActionMenu(block) {
   if (!block.menuOpen) return '';
   return `
-    <div class="node-action-menu" role="menu" aria-label="Continue with">
-      <span>Continue with</span>
+    <div class="node-action-menu" role="menu" aria-label="Switch node">
+      <span>Switch node</span>
       <button type="button" data-followup-kind="modify">Modify</button>
       <button type="button" data-followup-kind="variate">Variate</button>
       <button type="button" data-followup-kind="new-view">New view</button>
@@ -1823,7 +1856,7 @@ function renderWorkflowBlock(block) {
     <button class="canvas-item-delete" data-delete-endpoint="${endpoint}" type="button" title="Delete node">×</button>
     <button class="block-connect" type="button" title="Connect image"></button>
     <div class="workflow-block-header">
-      <button class="block-back" type="button" title="Choose next action">‹</button>
+      <button class="block-back" type="button" title="Switch node">‹</button>
       ${icon ? `<span class="workflow-icon">${icon}</span>` : ''}
       <strong>${title}</strong>
       <button class="workflow-info" type="button" title="Show node details">i</button>
@@ -3841,12 +3874,7 @@ function wireCanvas() {
       }
       const followup = event.target.closest('[data-followup-kind]');
       if (followup && block) {
-        block.menuOpen = false;
-        addBlock(
-          followup.dataset.followupKind,
-          { x: block.x + (block.w || 340) + 120, y: block.y },
-          blockEndpoint(blockId),
-        );
+        switchBlockKind(block, followup.dataset.followupKind);
         return;
       }
       if (event.target.closest('.close-node-details')) {

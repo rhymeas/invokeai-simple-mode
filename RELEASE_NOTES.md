@@ -1,14 +1,14 @@
-# InvokeAI Simple Mode v1.2.1
+# InvokeAI Simple Mode v1.2.2
 
-This patch replaces raw queue text such as `in_progress` with a compact `Rendering` status and a restrained animated indicator.
+This patch makes node navigation behave as an in-place mode switch. Opening the back menu inside a node and choosing Modify, Variate, New view, or Extract now transforms that same node. Its ID, position, prompt, references, result connections, and selection remain intact.
 
-The gray model line beneath Canvas is now a designed selector that opens on hover or click. It discovers compatible FLUX.2 Klein models already installed in InvokeAI, currently supports both 9B and 4B, and automatically pairs each model with its matching Qwen3 encoder.
+The Canvas `+` and other external creation paths still add a separate node. This keeps branching intentional and prevents duplicate nodes when the user is only changing the current operation.
 
-The selection is saved per workspace and is passed into normal generation, specialized nodes, and Focus Edit. Jobs still use InvokeAI's serial queue, so switching models does not run 9B and 4B simultaneously.
+Canvas and model-selector typography is smaller, including the selected model, dropdown options, and sequential-queue note.
 
 ## Important
 
-- Windows 10/11 only for v1.2.1.
+- Windows 10/11 only for v1.2.2.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.

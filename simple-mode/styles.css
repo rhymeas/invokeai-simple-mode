@@ -2875,8 +2875,8 @@ textarea {
 }
 
 .canvas-model-line > .modern-select {
-  width: min(205px, 46vw);
-  height: 20px;
+  width: min(178px, 42vw);
+  height: 18px;
 }
 
 .canvas-model-line .modern-select-trigger {
@@ -2885,7 +2885,12 @@ textarea {
   border-radius: 6px !important;
   background: transparent !important;
   color: #9f9fa6 !important;
-  font-size: 10px !important;
+  font-size: 9px !important;
+  font-weight: 500 !important;
+}
+
+.canvas-model-line .modern-select-trigger > span {
+  font-size: 9px !important;
   font-weight: 500 !important;
 }
 
@@ -2903,18 +2908,23 @@ textarea {
 }
 
 .canvas-model-line .modern-select-menu {
-  width: max(100%, 205px);
+  width: max(100%, 184px);
   top: calc(100% + 4px);
 }
 
 .canvas-model-line .modern-select-option {
-  min-height: 28px;
-  font-size: 10px;
+  min-height: 26px;
+  font-size: 9px;
+}
+
+.canvas-model-line .modern-select-option > span {
+  font-size: 9px !important;
+  font-weight: 450 !important;
 }
 
 .canvas-model-line .model-queue-note {
   color: #707077;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 450;
   white-space: nowrap;
 }
@@ -3358,6 +3368,11 @@ textarea {
 .canvas-title span {
   font-size: 12px;
   font-weight: 650;
+}
+
+.canvas-title > div:first-child > span {
+  font-size: 11px;
+  font-weight: 620;
 }
 
 .canvas-title small,

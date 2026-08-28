@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2 - 2026-08-28
+
+- Reduced the Canvas title, selected model, model menu, and queue-note typography.
+- Changed the back-menu workflow so selecting another mode transforms the current node instead of creating a duplicate.
+- Preserved the node ID, position, prompt, selection, incoming references, result connections, and workspace persistence while switching modes.
+- Kept the Canvas `+` and other external creation paths as the explicit way to add another node.
+
 ## 1.2.1 - 2026-08-28
 
 - Replaced raw queue-state text such as `in_progress` with a small human-readable `Rendering` label.
