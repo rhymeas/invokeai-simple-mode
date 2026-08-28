@@ -2708,6 +2708,339 @@ textarea {
   }
 }
 
+/* Shared compact select menu */
+.modern-select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.modern-select-native {
+  position: absolute !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  width: 1px !important;
+  height: 1px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.modern-select-trigger {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 10px !important;
+  border: 1px solid #45454a !important;
+  border-radius: 9px !important;
+  background: #202023 !important;
+  color: #eeeeef !important;
+  box-shadow: none !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  text-align: left;
+  cursor: pointer;
+}
+
+.modern-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modern-select-trigger > i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid #b7b7bd;
+  border-bottom: 1.5px solid #b7b7bd;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.modern-select.open .modern-select-trigger {
+  border-color: #6e67ff !important;
+  background: #29292d !important;
+}
+
+.modern-select.open .modern-select-trigger > i {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.modern-select-menu {
+  position: absolute;
+  z-index: 80;
+  left: 0;
+  top: calc(100% + 5px);
+  width: max(100%, 150px);
+  max-height: 220px;
+  display: none;
+  gap: 2px;
+  padding: 5px;
+  overflow: auto;
+  border: 1px solid #48484d;
+  border-radius: 10px;
+  background: #202023;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.48);
+}
+
+.modern-select.open .modern-select-menu {
+  display: grid;
+}
+
+.modern-select-option {
+  width: 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #dfdfe2;
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.modern-select-option:hover,
+.modern-select-option:focus-visible {
+  outline: 0;
+  background: #303034;
+}
+
+.modern-select-option.selected {
+  background: #38383d;
+  color: #ffffff;
+}
+
+.modern-select-option > i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.modern-select-option.selected > i {
+  background: #746dff;
+}
+
+.workspace-switcher > .modern-select {
+  height: 34px;
+}
+
+.ref-meta .modern-select,
+.field .modern-select {
+  height: 38px;
+}
+
+.native-setting-row .modern-select,
+.video-setting .modern-select {
+  height: 32px;
+}
+
+/* Purpose-built image workflow nodes */
+.workflow-block.variate,
+.workflow-block.variate-form-color,
+.workflow-block.change-expression,
+.workflow-block.new-view,
+.workflow-block.extract {
+  min-height: 0 !important;
+}
+
+.specialized-body {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+.specialized-body .block-token-row {
+  min-height: 54px;
+}
+
+.node-segments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: #242427;
+}
+
+.node-segment {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #aaaab1;
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.node-segment:hover {
+  color: #eeeeef;
+  background: #303034;
+}
+
+.node-segment.active {
+  color: #ffffff;
+  background: #444449;
+}
+
+.variation-direction,
+.view-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.variation-direction {
+  min-height: 70px;
+  padding: 5px;
+  border: 1px solid #414146;
+  border-radius: 10px;
+  background: #29292c;
+}
+
+.variation-direction .node-segment {
+  height: 27px;
+  border: 1px solid transparent;
+}
+
+.variation-direction .node-segment.active,
+.view-selector .node-segment.active {
+  border-color: #666069;
+  background: #414146;
+}
+
+.view-selector {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 5px;
+  border: 1px solid #414146;
+  border-radius: 10px;
+  background: #29292c;
+}
+
+.specialized-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.specialized-fields:has(> label:only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.specialized-fields label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.specialized-fields label > span {
+  color: #aaaab1;
+  font-size: 9px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.specialized-fields .modern-select {
+  height: 31px;
+}
+
+.node-quality-note {
+  margin-top: -3px;
+  color: #9999a0;
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.specialized-prompt {
+  min-height: 42px;
+  max-height: 72px;
+  padding: 9px 10px;
+  overflow: auto;
+  border: 1px solid #45454a;
+  border-radius: 9px;
+  background: #29292c;
+  color: #f0f0f1;
+  font-size: 11px;
+  line-height: 1.35;
+  user-select: text;
+  cursor: text;
+}
+
+.specialized-prompt:empty::before {
+  content: attr(data-placeholder);
+  color: #909097;
+  pointer-events: none;
+}
+
+.specialized-actions {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.specialized-actions button,
+.specialized-run.full {
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.specialized-actions .improve-prompt {
+  padding: 0;
+  background: #3b3b40;
+  color: #eeeeef;
+  font-size: 16px;
+}
+
+.specialized-run {
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: #554ced;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.specialized-run:hover {
+  background: #665ef4;
+}
+
+.specialized-run.full {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .modern-select-menu {
+    max-height: 180px;
+  }
+}
+
 .canvas-output-node .node-body video,
 .result-open video {
   width: 100%;

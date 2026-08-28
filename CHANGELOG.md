@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 - 2026-08-28
+
+- Replaced native Windows select popups with compact neutral dropdown menus across Simple Mode.
+- Added purpose-built Variate, New view, and Extract node interfaces with persistent presets.
+- Added real 360p draft previews that submit aligned low-resolution, four-step InvokeAI graphs.
+- Compiled each specialized node's choices into precise model instructions instead of UI-only labels.
+- Kept full-quality generation available per node through the shared InvokeAI quality controls.
+- Fixed new-node placement, empty specialized prompts, and stale output-count labels after workspace loading.
+
 ## 1.1.1 - 2026-08-28
 
 - Replaced raw queue-state labels with a contained neutral rendering indicator.

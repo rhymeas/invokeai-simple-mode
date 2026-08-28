@@ -780,22 +780,29 @@ def clamp_dimension(value):
     return max(16, value - (value % 16))
 
 
-def dimensions_for(aspect, source_image):
+def dimensions_for(aspect, source_image, preview_size=None):
     if aspect == "original" and source_image:
         width = int(source_image.get("width") or 1024)
         height = int(source_image.get("height") or 1024)
         scale = min(1024 / max(width, height), 1)
-        return clamp_dimension(width * scale), clamp_dimension(height * scale)
+        width, height = clamp_dimension(width * scale), clamp_dimension(height * scale)
+    else:
+        sizes = {
+            "1:1": (1024, 1024),
+            "16:9": (1280, 720),
+            "9:16": (720, 1280),
+            "4:3": (1152, 864),
+            "3:4": (864, 1152),
+            "21:9": (1280, 544),
+        }
+        width, height = sizes.get(aspect, (1024, 1024))
 
-    sizes = {
-        "1:1": (1024, 1024),
-        "16:9": (1280, 720),
-        "9:16": (720, 1280),
-        "4:3": (1152, 864),
-        "3:4": (864, 1152),
-        "21:9": (1280, 544),
-    }
-    return sizes.get(aspect, (1024, 1024))
+    if preview_size:
+        short_edge = max(256, min(512, int(preview_size)))
+        scale = min(short_edge / max(1, min(width, height)), 1280 / max(width, height))
+        width = max(256, min(1280, int((width * scale / 16) + 0.5) * 16))
+        height = max(256, min(1280, int((height * scale / 16) + 0.5) * 16))
+    return width, height
 
 
 def build_prompt(prompt, images, connections=None):
@@ -827,10 +834,10 @@ def build_prompt(prompt, images, connections=None):
     return "\n".join(lines)
 
 
-def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None):
+def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None, preview_size=None):
     main_model, qwen_model, vae_model = choose_models()
     source_image = next((image for image in images if image), None)
-    width, height = dimensions_for(aspect, source_image)
+    width, height = dimensions_for(aspect, source_image, preview_size)
     prompt_text = build_prompt(prompt, images, connections)
     image_fields = [{"image_name": image["image_name"]} for image in images if image.get("image_name")]
     guidance = 3.5 if mode == "draft" else 4.0
@@ -1433,6 +1440,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             mode = "pro"
         aspect = payload.get("aspect") or "original"
+        preview_size = max(0, min(512, int(payload.get("preview_size") or 0)))
         base_seed = payload.get("seed")
         mask_image_name = Path(payload.get("mask_image_name") or "").name or None
         if base_seed in (None, "", 0, "0"):
@@ -1443,7 +1451,7 @@ class Handler(BaseHTTPRequestHandler):
         item_ids = []
         for index in range(count):
             seed = (base_seed + index * 9973) % 4294967295
-            graph = build_graph(images, prompt, aspect, steps, seed, connections, mode, mask_image_name)
+            graph = build_graph(images, prompt, aspect, steps, seed, connections, mode, mask_image_name, preview_size)
             body = {
                 "batch": {
                     "batch_id": f"simple-mode-{random.randint(100000, 999999)}-{index}",
@@ -1457,7 +1465,7 @@ class Handler(BaseHTTPRequestHandler):
             response = invoke_json("/api/v1/queue/default/enqueue_batch", method="POST", payload=body, timeout=30)
             item_ids.extend(response.get("item_ids") or [])
 
-        self.send_json({"item_ids": item_ids, "seed": base_seed})
+        self.send_json({"item_ids": item_ids, "seed": base_seed, "preview_size": preview_size})
 
     def handle_video_generate(self):
         payload = self.read_json()

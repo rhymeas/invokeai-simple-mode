@@ -103,6 +103,115 @@ function truncateText(value, limit = 130) {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
 
+let openModernSelect = null;
+
+function closeModernSelect(except = null) {
+  if (!openModernSelect || openModernSelect === except) return;
+  openModernSelect.classList.remove('open');
+  openModernSelect.querySelector('.modern-select-trigger')?.setAttribute('aria-expanded', 'false');
+  openModernSelect = null;
+}
+
+function syncModernSelect(select) {
+  const wrapper = select?.closest('.modern-select');
+  if (!wrapper) return;
+  const trigger = wrapper.querySelector('.modern-select-trigger');
+  const menu = wrapper.querySelector('.modern-select-menu');
+  const selected = select.options[select.selectedIndex] || select.options[0];
+  trigger.querySelector('span').textContent = selected?.textContent || 'Choose';
+  trigger.disabled = select.disabled;
+  menu.innerHTML = [...select.options].map((option) => `
+    <button class="modern-select-option${option.selected ? ' selected' : ''}" data-modern-value="${escapeHtml(option.value)}" type="button" role="option" aria-selected="${option.selected ? 'true' : 'false'}"${option.disabled ? ' disabled' : ''}>
+      <span>${escapeHtml(option.textContent)}</span><i aria-hidden="true"></i>
+    </button>
+  `).join('');
+}
+
+function enhanceSelect(select) {
+  if (!select || select.dataset.modernized === 'true') return;
+  select.dataset.modernized = 'true';
+  select.tabIndex = -1;
+  select.setAttribute('aria-hidden', 'true');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'modern-select';
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.appendChild(select);
+  select.classList.add('modern-select-native');
+
+  const trigger = document.createElement('button');
+  trigger.className = 'modern-select-trigger';
+  trigger.type = 'button';
+  trigger.setAttribute('role', 'combobox');
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.setAttribute('aria-label', select.getAttribute('aria-label') || select.title || select.closest('label')?.querySelector(':scope > span')?.textContent || 'Choose');
+  trigger.innerHTML = '<span></span><i aria-hidden="true"></i>';
+
+  const menu = document.createElement('div');
+  const menuId = `select-menu-${Math.random().toString(36).slice(2, 10)}`;
+  menu.className = 'modern-select-menu';
+  menu.id = menuId;
+  menu.setAttribute('role', 'listbox');
+  trigger.setAttribute('aria-controls', menuId);
+  wrapper.append(trigger, menu);
+
+  trigger.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const willOpen = !wrapper.classList.contains('open');
+    closeModernSelect(wrapper);
+    wrapper.classList.toggle('open', willOpen);
+    trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    openModernSelect = willOpen ? wrapper : null;
+    if (willOpen) menu.querySelector('.selected:not(:disabled)')?.focus({ preventScroll: true });
+  });
+  trigger.addEventListener('keydown', (event) => {
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+    event.preventDefault();
+    if (!wrapper.classList.contains('open')) trigger.click();
+  });
+  menu.addEventListener('click', (event) => {
+    const option = event.target.closest('[data-modern-value]');
+    if (!option || option.disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    select.value = option.dataset.modernValue;
+    select.dispatchEvent(new Event('input', { bubbles: true }));
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    syncModernSelect(select);
+    wrapper.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+    openModernSelect = null;
+    trigger.focus({ preventScroll: true });
+  });
+  menu.addEventListener('keydown', (event) => {
+    const options = [...menu.querySelectorAll('.modern-select-option:not(:disabled)')];
+    const current = options.indexOf(document.activeElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      wrapper.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+      openModernSelect = null;
+      trigger.focus({ preventScroll: true });
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+    event.preventDefault();
+    const delta = event.key === 'ArrowDown' ? 1 : -1;
+    options[(current + delta + options.length) % options.length]?.focus({ preventScroll: true });
+  });
+  select.addEventListener('change', () => syncModernSelect(select));
+  syncModernSelect(select);
+}
+
+function enhanceSelects(root = document) {
+  root.querySelectorAll('select:not([data-modernized="true"])').forEach(enhanceSelect);
+}
+
+function syncModernSelects() {
+  document.querySelectorAll('select[data-modernized="true"]').forEach(syncModernSelect);
+}
+
 function setSaveStatus(text, kind = '') {
   saveStatus.textContent = text;
   saveStatus.classList.toggle('saving', kind === 'saving');
@@ -168,6 +277,7 @@ function updateWorkspaceOption(workspaceDocument) {
   option.textContent = workspaceDocument.name || 'Untitled workspace';
   if (!option.parentElement) workspaceSelect.prepend(option);
   workspaceSelect.value = workspaceDocument.id;
+  syncModernSelect(workspaceSelect);
 }
 
 function resetRuntimeState() {
@@ -257,6 +367,7 @@ function applyWorkspaceDocument(document) {
   state.workspace.updatedAt = document.updated_at || null;
   workspaceName.value = state.workspace.name;
   updateWorkspaceOption(document);
+  syncModernSelects();
   updateWorkspaceUrl(document.id);
   state.suspendAutosave = false;
   setSaveStatus('Saved', 'saved');
@@ -418,6 +529,32 @@ const blockDefaults = {
     hint: 'Describe motion, camera movement, timing, and what must stay fixed',
   },
 };
+
+const specializedNodeDefaults = {
+  variate: { axis: 'form', direction: 'structured', preset: 'expression', intensity: 'balanced', quality: 'preview', count: '2' },
+  'variate-form-color': { axis: 'color', direction: 'expressive', preset: 'materials', intensity: 'balanced', quality: 'preview', count: '2' },
+  'change-expression': { axis: 'form', direction: 'expressive', preset: 'expression', intensity: 'balanced', quality: 'preview', count: '2' },
+  'new-view': { view: 'three-quarter', elevation: 'eye-level', quality: 'preview', count: '1' },
+  extract: { target: 'color', sample: 'hierarchy', quality: 'preview', count: '1' },
+};
+
+function isSpecializedNode(kind) {
+  return Object.prototype.hasOwnProperty.call(specializedNodeDefaults, kind);
+}
+
+function ensureSpecializedSettings(block) {
+  if (!block || !isSpecializedNode(block.kind)) return null;
+  if (!block.specializedVersion) {
+    const legacyPrompt = blockDefaults[block.kind]?.prompt || '';
+    if ((block.prompt || '').trim() === legacyPrompt.trim()) block.prompt = '';
+    block.specializedVersion = 1;
+  }
+  block.nodeSettings = {
+    ...specializedNodeDefaults[block.kind],
+    ...(block.nodeSettings || {}),
+  };
+  return block.nodeSettings;
+}
 
 function nativeFeatures() {
   return state.nativeCatalog?.features || [];
@@ -1244,7 +1381,7 @@ function blockPromptHtml(block) {
 
 function showBlockMenu(point = null, sourceEndpoint = null) {
   if (sourceEndpoint) state.connectFrom = sourceEndpoint;
-  const fallback = { x: 24, y: 24 };
+  const fallback = { x: 120, y: 180 };
   const anchor = point || fallback;
   state.menuAnchor = anchor;
   blockMenu.style.left = `${Math.max(12, anchor.x)}px`;
@@ -1262,21 +1399,23 @@ function hideBlockMenu() {
 function addBlock(kind, position = null, sourceEndpoint = null) {
   const config = configForBlock(kind);
   const id = `${kind}-${state.blockCounter += 1}`;
+  const specialized = isSpecializedNode(kind);
   const block = {
     id,
     kind,
     title: config.title,
     icon: config.icon,
-    prompt: config.prompt,
+    prompt: specialized ? '' : config.prompt,
     nativeFeature: config.nativeFeature || null,
     nativeSettings: Object.fromEntries((config.nativeFeature?.settings || []).map((setting) => [setting.name, setting.default])),
     sourceOrder: [],
     hiddenSources: [],
     x: position?.x ?? 410,
     y: position?.y ?? 160,
-    w: config.nativeFeature ? 370 : kind === 'animate' ? 390 : 340,
-    h: config.nativeFeature ? 260 : kind === 'animate' ? 390 : 300,
+    w: config.nativeFeature ? 370 : kind === 'animate' ? 390 : specialized ? 360 : 340,
+    h: config.nativeFeature ? 260 : kind === 'animate' ? 390 : specialized ? 410 : 300,
   };
+  if (specialized) ensureSpecializedSettings(block);
   state.blocks.push(block);
   const from = sourceEndpoint || state.connectFrom || state.selected;
   if (from && ['image', 'output', 'block'].includes(endpointType(from))) {
@@ -1503,6 +1642,125 @@ function renderBlockActionMenu(block) {
   `;
 }
 
+function nodeOptionHtml(options, value) {
+  return options.map(([optionValue, label]) => (
+    `<option value="${escapeHtml(optionValue)}"${String(value) === optionValue ? ' selected' : ''}>${escapeHtml(label)}</option>`
+  )).join('');
+}
+
+function nodeSegmentHtml(name, options, value) {
+  return options.map(([optionValue, label]) => `
+    <button class="node-segment${String(value) === optionValue ? ' active' : ''}" data-node-setting-button="${escapeHtml(name)}" data-node-setting-value="${escapeHtml(optionValue)}" type="button">${escapeHtml(label)}</button>
+  `).join('');
+}
+
+function specializedPromptEditor(block) {
+  const prompt = String(block.prompt || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/(@\d+)/g, '<span class="prompt-mention">$1</span>');
+  return `
+    <div class="specialized-prompt" data-block-prompt="${block.id}" data-placeholder="Optional direction" contenteditable="true" spellcheck="true">${prompt}</div>
+  `;
+}
+
+function specializedQualityFields(settings, countOptions) {
+  return `
+    <div class="specialized-fields">
+      <label><span>Quality</span><select data-node-setting="quality">
+        ${nodeOptionHtml([['preview', '360p preview'], ['full', 'Full quality']], settings.quality)}
+      </select></label>
+      <label><span>Outputs</span><select data-node-setting="count">
+        ${nodeOptionHtml(countOptions, settings.count)}
+      </select></label>
+    </div>
+    <div class="node-quality-note">${settings.quality === 'preview' ? 'Fast 360p exploration · 4 steps' : 'Uses the main quality controls'}</div>
+  `;
+}
+
+function renderVariationBlockBody(block) {
+  const settings = ensureSpecializedSettings(block);
+  const presets = settings.axis === 'color'
+    ? [['palette', 'Palette'], ['materials', 'Materials'], ['brand', 'Brand accents'], ['lighting', 'Light color']]
+    : [['expression', 'Expression'], ['silhouette', 'Silhouette'], ['proportion', 'Proportion'], ['details', 'Object details']];
+  return `
+    <div class="workflow-body specialized-body variation-body">
+      <div class="block-token-row">${renderBlockTokens(block)}</div>
+      <div class="node-segments" aria-label="Variation mode">
+        ${nodeSegmentHtml('axis', [['form', 'Form'], ['color', 'Color']], settings.axis)}
+      </div>
+      <div class="variation-direction" aria-label="Variation direction">
+        ${nodeSegmentHtml('direction', [
+          ['structured', 'Structured'], ['expressive', 'Expressive'],
+          ['minimal', 'Minimal'], ['organic', 'Organic'],
+        ], settings.direction)}
+      </div>
+      <div class="specialized-fields">
+        <label><span>Preset</span><select data-node-setting="preset">${nodeOptionHtml(presets, settings.preset)}</select></label>
+        <label><span>Change</span><select data-node-setting="intensity">${nodeOptionHtml([
+          ['subtle', 'Subtle'], ['balanced', 'Balanced'], ['bold', 'Bold'],
+        ], settings.intensity)}</select></label>
+      </div>
+      ${specializedQualityFields(settings, [['2', '2 previews'], ['4', '4 previews']])}
+      ${specializedPromptEditor(block)}
+      <div class="specialized-actions">
+        <button class="improve-prompt" type="button" title="Improve optional direction">✧</button>
+        <button class="run-block specialized-run" type="button">Generate ${settings.quality === 'preview' ? 'previews' : 'variations'}</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderNewViewBlockBody(block) {
+  const settings = ensureSpecializedSettings(block);
+  return `
+    <div class="workflow-body specialized-body new-view-body">
+      <div class="block-token-row">${renderBlockTokens(block)}</div>
+      <div class="view-selector" aria-label="Camera direction">
+        ${nodeSegmentHtml('view', [
+          ['front', 'Front'], ['three-quarter', '3/4'], ['side', 'Side'],
+          ['rear', 'Rear'], ['top-down', 'Top'], ['wide', 'Wide'],
+        ], settings.view)}
+      </div>
+      <div class="specialized-fields">
+        <label><span>Elevation</span><select data-node-setting="elevation">${nodeOptionHtml([
+          ['eye-level', 'Eye level'], ['low-angle', 'Low angle'], ['high-angle', 'High angle'],
+        ], settings.elevation)}</select></label>
+      </div>
+      ${specializedQualityFields(settings, [['1', '1 view'], ['2', '2 views']])}
+      ${specializedPromptEditor(block)}
+      <button class="run-block specialized-run full" type="button">Generate new view</button>
+    </div>
+  `;
+}
+
+function renderExtractBlockBody(block) {
+  const settings = ensureSpecializedSettings(block);
+  return `
+    <div class="workflow-body specialized-body extract-body">
+      <div class="block-token-row">${renderBlockTokens(block)}</div>
+      <div class="node-segments" aria-label="Extraction target">
+        ${nodeSegmentHtml('target', [['color', 'Color'], ['material', 'Material'], ['parts', 'Parts']], settings.target)}
+      </div>
+      <div class="specialized-fields">
+        <label><span>Sample by</span><select data-node-setting="sample">${nodeOptionHtml([
+          ['hierarchy', 'Hierarchy'], ['dominant', 'Dominant'], ['detailed', 'Detailed'],
+        ], settings.sample)}</select></label>
+      </div>
+      ${specializedQualityFields(settings, [['1', '1 sheet'], ['2', '2 sheets']])}
+      ${specializedPromptEditor(block)}
+      <button class="run-block specialized-run full" type="button">Extract reference</button>
+    </div>
+  `;
+}
+
+function renderSpecializedBlockBody(block) {
+  if (['variate', 'variate-form-color', 'change-expression'].includes(block.kind)) return renderVariationBlockBody(block);
+  if (block.kind === 'new-view') return renderNewViewBlockBody(block);
+  return renderExtractBlockBody(block);
+}
+
 function renderWorkflowBlock(block) {
   const element = document.createElement('div');
   const endpoint = blockEndpoint(block.id);
@@ -1526,7 +1784,7 @@ function renderWorkflowBlock(block) {
       <strong>${title}</strong>
       <button class="workflow-info" type="button" title="Show node details">i</button>
     </div>
-    ${block.nativeFeature ? renderNativeBlockBody(block) : block.kind === 'animate' ? renderVideoBlockBody(block) : `<div class="workflow-body">
+    ${block.nativeFeature ? renderNativeBlockBody(block) : block.kind === 'animate' ? renderVideoBlockBody(block) : isSpecializedNode(block.kind) ? renderSpecializedBlockBody(block) : `<div class="workflow-body">
       <div class="block-token-row">${renderBlockTokens(block)}</div>
       <div class="block-prompt" data-block-prompt="${block.id}" contenteditable="true" spellcheck="true">${blockPromptHtml(block)}</div>
       <div class="block-actions">
@@ -2212,6 +2470,8 @@ function syncModeControls() {
     steps.disabled = false;
     setUploadStatus('Pro mode: uses the selected steps.');
   }
+  if (!state.busy) generateButton.textContent = `Generate ${document.getElementById('count').value}`;
+  syncModernSelect(steps);
 }
 
 function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'image') {
@@ -2369,6 +2629,84 @@ async function generate(promptOverride = null) {
   await submitGeneration({ prompt, images: collectImages() });
 }
 
+function generationProfileForBlock(block) {
+  const settings = ensureSpecializedSettings(block);
+  if (!settings) {
+    return { prompt: block.prompt || configForBlock(block.kind)?.prompt || '', extraPayload: {} };
+  }
+  const extraDirection = (block.prompt || '').trim();
+  let prompt = '';
+
+  if (['variate', 'variate-form-color', 'change-expression'].includes(block.kind)) {
+    const axisInstruction = settings.axis === 'color'
+      ? 'Keep the geometry and composition fixed. Vary only the palette, material color, and color relationships.'
+      : 'Keep the palette, identity, and scene logic fixed. Vary the selected form characteristics.';
+    const directionInstruction = {
+      structured: 'Use controlled, ordered, design-system-consistent changes.',
+      expressive: 'Use more expressive changes while keeping the result coherent and usable.',
+      minimal: 'Use restrained, simplified changes with minimal visual deviation.',
+      organic: 'Use natural, flowing, less rigid changes without losing the original subject.',
+    }[settings.direction] || '';
+    const presetInstruction = {
+      expression: 'Change expression or pose while preserving identity, outfit, and lighting.',
+      silhouette: 'Explore silhouette and contour while preserving recognizable identity.',
+      proportion: 'Adjust proportions deliberately while preserving function and composition.',
+      details: 'Vary secondary object details without changing the main structure.',
+      palette: 'Create a coherent alternate color palette with matched value contrast.',
+      materials: 'Vary material finishes and surface response while preserving object structure.',
+      brand: 'Vary brand accents only; keep logos, wording, and layout intact.',
+      lighting: 'Vary light color and reflected color while preserving light direction and exposure logic.',
+    }[settings.preset] || '';
+    const intensityInstruction = {
+      subtle: 'Make the change subtle and immediately recognizable as the same source.',
+      balanced: 'Make a clear but controlled change.',
+      bold: 'Make a bold change while preserving all explicitly fixed content.',
+    }[settings.intensity] || '';
+    prompt = [`Use @1 as the exact source image.`, axisInstruction, presetInstruction, directionInstruction, intensityInstruction, extraDirection]
+      .filter(Boolean).join(' ');
+  } else if (block.kind === 'new-view') {
+    const viewInstruction = {
+      front: 'Use a straight front camera view.',
+      'three-quarter': 'Use a three-quarter camera view that reveals depth and adjacent surfaces.',
+      side: 'Use a clean side camera view.',
+      rear: 'Use a rear camera view consistent with the original spatial layout.',
+      'top-down': 'Use a top-down camera view with correct spatial relationships.',
+      wide: 'Use a wider camera view that reveals more of the same environment.',
+    }[settings.view] || '';
+    const elevationInstruction = {
+      'eye-level': 'Keep the camera at eye level.',
+      'low-angle': 'Use a low camera angle looking upward.',
+      'high-angle': 'Use a high camera angle looking downward.',
+    }[settings.elevation] || '';
+    prompt = [
+      'Use @1 as the exact source scene.', viewInstruction, elevationInstruction,
+      'Preserve the same objects, people, branding, materials, lighting continuity, and spatial logic. Reconstruct only what the new camera must reveal.',
+      extraDirection,
+    ].filter(Boolean).join(' ');
+  } else {
+    const targetInstruction = {
+      color: 'Create a clean visual reference sheet of the dominant and supporting color palette, including relative proportions and value hierarchy.',
+      material: 'Create a clean visual reference sheet of the key materials, textures, finishes, and surface responses.',
+      parts: 'Create a clean visual reference sheet that separates the important components and parts while preserving their visual identity.',
+    }[settings.target] || '';
+    const sampleInstruction = {
+      hierarchy: 'Organize samples from primary to secondary importance.',
+      dominant: 'Focus on only the strongest, most reusable visual signals.',
+      detailed: 'Include nuanced secondary samples and small but meaningful distinctions.',
+    }[settings.sample] || '';
+    prompt = ['Use @1 as the only source of truth.', targetInstruction, sampleInstruction, 'Use a neutral dark-gray presentation with no invented branding or labels.', extraDirection]
+      .filter(Boolean).join(' ');
+  }
+
+  const extraPayload = { count: Math.max(1, Math.min(4, Number(settings.count) || 1)) };
+  if (settings.quality === 'preview') {
+    extraPayload.mode = 'draft';
+    extraPayload.steps = 4;
+    extraPayload.preview_size = 360;
+  }
+  return { prompt, extraPayload };
+}
+
 async function generateFromBlock(blockId) {
   const block = state.blocks.find((item) => item.id === blockId);
   const editable = document.querySelector(`[data-block-prompt="${blockId}"]`);
@@ -2382,12 +2720,13 @@ async function generateFromBlock(blockId) {
     await runNativeBlock(blockId);
     return;
   }
-  const prompt = block.prompt || configForBlock(block.kind)?.prompt || '';
+  const profile = generationProfileForBlock(block);
   await submitGeneration({
-    prompt,
+    prompt: profile.prompt,
     images: collectImagesForBlock(block),
     sourceEndpoint: blockEndpoint(block.id),
     connections: collectConnectionsForBlock(block),
+    extraPayload: profile.extraPayload,
   });
 }
 
@@ -3436,7 +3775,17 @@ function wireCanvas() {
       const blockId = blockElement.dataset.blockId;
       setSelection([blockEndpoint(blockId)]);
       const block = state.blocks.find((item) => item.id === blockId);
-      const editable = event.target.closest('[contenteditable="true"], input, select, textarea');
+      const nodeSettingButton = event.target.closest('[data-node-setting-button]');
+      if (nodeSettingButton && block) {
+        const settings = ensureSpecializedSettings(block);
+        settings[nodeSettingButton.dataset.nodeSettingButton] = nodeSettingButton.dataset.nodeSettingValue;
+        if (nodeSettingButton.dataset.nodeSettingButton === 'axis') {
+          settings.preset = settings.axis === 'color' ? 'palette' : 'expression';
+        }
+        renderCanvas();
+        return;
+      }
+      const editable = event.target.closest('[contenteditable="true"], input, select, textarea, .modern-select');
       if (editable) {
         nodeLayer.querySelectorAll('.workflow-block.selected').forEach((item) => item.classList.remove('selected'));
         blockElement.classList.add('selected');
@@ -3929,6 +4278,17 @@ function wireCanvas() {
       }
       return;
     }
+    const nodeSetting = event.target.closest('[data-node-setting]');
+    if (nodeSetting) {
+      const blockElement = nodeSetting.closest('.workflow-block');
+      const block = state.blocks.find((item) => item.id === blockElement?.dataset.blockId);
+      const settings = ensureSpecializedSettings(block);
+      if (settings) {
+        settings[nodeSetting.dataset.nodeSetting] = nodeSetting.value;
+        renderCanvas();
+      }
+      return;
+    }
     const setting = event.target.closest('[data-native-setting]');
     if (!setting) return;
     const blockElement = setting.closest('.workflow-block');
@@ -4071,6 +4431,27 @@ window.addEventListener('pagehide', () => {
   );
 });
 
+document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest('.modern-select')) closeModernSelect();
+}, true);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeModernSelect();
+});
+
+const selectObserver = new MutationObserver((mutations) => {
+  const changedSelects = new Set();
+  mutations.forEach((mutation) => {
+    if (mutation.target instanceof HTMLSelectElement) changedSelects.add(mutation.target);
+    mutation.addedNodes.forEach((node) => {
+      if (!(node instanceof Element)) return;
+      if (node.matches('select')) enhanceSelect(node);
+      node.querySelectorAll?.('select').forEach(enhanceSelect);
+    });
+  });
+  changedSelects.forEach(syncModernSelect);
+});
+selectObserver.observe(document.body, { childList: true, subtree: true });
+
 createRefSlots();
 wireUploads();
 wireCanvas();
@@ -4078,6 +4459,7 @@ renderTokens();
 renderCanvas();
 updateOutputMode();
 syncModeControls();
+enhanceSelects();
 checkStatus();
 loadNativeCatalog();
 refreshVideoStatus({ render: true });
