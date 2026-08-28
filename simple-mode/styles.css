@@ -2318,17 +2318,11 @@ h1 {
 .focus-layer {
   position: relative;
   min-width: 0;
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 7px;
-  align-items: center;
-  gap: 8px;
-  padding: 6px;
   border: 1px solid #303034;
   border-radius: 7px;
   background: #1b1b1e;
   color: #d9d9dc;
-  text-align: left;
-  cursor: pointer;
+  overflow: hidden;
 }
 
 .focus-layer:hover {
@@ -2339,6 +2333,112 @@ h1 {
 .focus-layer.active {
   border-color: #706cf0;
   background: #29292e;
+}
+
+.focus-layer.hidden-layer {
+  opacity: 0.58;
+}
+
+.focus-layer-select {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 7px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.focus-layer-select:disabled {
+  cursor: default;
+}
+
+.focus-layer-tools {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  max-height: 0;
+  padding: 0 5px;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 120ms ease, padding 120ms ease, opacity 120ms ease;
+}
+
+.focus-layer:hover .focus-layer-tools,
+.focus-layer:focus-within .focus-layer-tools {
+  max-height: 30px;
+  padding: 0 5px 5px;
+  opacity: 1;
+}
+
+.focus-layer-tool {
+  height: 23px;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: #2b2b2f;
+  color: #bcbcc1;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.focus-layer-tool:hover:not(:disabled),
+.focus-layer-tool:focus-visible:not(:disabled) {
+  background: #3a3a3f;
+  color: #fff;
+}
+
+.focus-layer-tool.delete:hover:not(:disabled),
+.focus-layer-tool.delete:focus-visible:not(:disabled) {
+  background: #7d252a;
+  color: #fff;
+}
+
+.focus-layer-tool:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.focus-eye-icon {
+  position: relative;
+  width: 12px;
+  height: 8px;
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 70% 20% 70% 20%;
+  transform: rotate(45deg);
+}
+
+.focus-eye-icon::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.focus-layer-tool.visibility.is-hidden .focus-eye-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 15px;
+  height: 1.5px;
+  background: currentColor;
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .focus-layer-thumb {
@@ -2520,6 +2620,14 @@ h1 {
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.focus-reference button:hover,
+.focus-reference button:focus-visible {
+  border-color: #d24a52;
+  background: #a52f36;
+  color: #fff;
 }
 
 .focus-reference-empty {
@@ -3477,6 +3585,14 @@ textarea {
   font-size: 10px;
 }
 
+.focus-media-stack {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+}
+
 .focus-media-wrap {
   position: relative;
   flex: 0 0 auto;
@@ -3484,6 +3600,29 @@ textarea {
   max-height: 88%;
   transform-origin: center;
   transition: transform 120ms ease;
+}
+
+.focus-media-standard {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #4c4c52;
+  border-radius: 7px;
+  background: #29292d;
+  color: #efeff1;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-media-standard:hover:not(:disabled),
+.focus-media-standard:focus-visible:not(:disabled) {
+  border-color: #716cf0;
+  background: #35343d;
+}
+
+.focus-media-standard:disabled {
+  opacity: 0.5;
+  cursor: wait;
 }
 
 .focus-media-wrap #focusImage,
@@ -3624,6 +3763,12 @@ textarea {
   .focus-layer {
     width: 150px;
     flex: 0 0 150px;
+  }
+
+  .focus-layer-tools {
+    max-height: 30px;
+    padding: 0 5px 5px;
+    opacity: 1;
   }
 
   .focus-panel {

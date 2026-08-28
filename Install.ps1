@@ -86,7 +86,7 @@ if (-not $NoShortcuts) {
     }
 }
 
-Write-Host "InvokeAI Simple Mode v1.3.1 installed." -ForegroundColor Green
+Write-Host "InvokeAI Simple Mode v1.4.0 installed." -ForegroundColor Green
 Write-Host "InvokeAI: $InvokeVersion"
 Write-Host "Launcher: $LauncherExe"
 Write-Host "Your existing models, outputs, databases, and Simple Mode workspaces were not modified."

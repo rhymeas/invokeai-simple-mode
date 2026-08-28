@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0 - 2026-08-28
+
+- Added persistent visibility, reorder, and delete controls to Focus Edit's version layers while protecting the original image.
+- Made hiding or deleting the active layer fall back to the highest visible version automatically.
+- Added a compact Render standard action directly below an active 360p preview on the detailed image canvas.
+- Changed Focus reference removal to a clear red hover and keyboard-focus state.
+- Enabled InvokeAI caching for the FLUX.2 Klein loader and reusable reference-conditioning preparation across sequential preview jobs.
+
 ## 1.3.1 - 2026-08-28
 
 - Added mouse-wheel and trackpad zoom directly over the image in Focus Edit.

@@ -885,7 +885,7 @@ def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro
         "loader": {
             "id": "loader",
             "is_intermediate": True,
-            "use_cache": False,
+            "use_cache": True,
             "model": model_field(main_model),
             "vae_model": model_field(vae_model),
             "qwen3_encoder_model": model_field(qwen_model),
@@ -965,7 +965,7 @@ def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro
             "metadata": None,
             "id": "prep",
             "is_intermediate": True,
-            "use_cache": False,
+            "use_cache": True,
             "images": image_fields,
             "use_preferred_resolution": True,
             "type": "flux_kontext_image_prep",
@@ -973,7 +973,7 @@ def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro
         nodes["kontext"] = {
             "id": "kontext",
             "is_intermediate": True,
-            "use_cache": False,
+            "use_cache": True,
             "image": None,
             "type": "flux_kontext",
         }
@@ -1154,7 +1154,7 @@ def ensure_generation_queue_idle():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "InvokeSimpleMode/1.3.1"
+    server_version = "InvokeSimpleMode/1.4.0"
 
     def log_message(self, fmt, *args):
         return
