@@ -19,6 +19,8 @@ const state = {
   dragSelection: null,
   focus: null,
   focusBusy: false,
+  focusHistories: {},
+  focusReferences: {},
   lastCanvasDragAt: 0,
   nodeClickTimer: null,
   selected: null,
@@ -262,10 +264,29 @@ function serializableImage(media) {
   return copy;
 }
 
+function serializableFocusHistories() {
+  return Object.fromEntries(Object.entries(state.focusHistories || {}).map(([endpoint, history]) => {
+    const layers = (history?.layers || [])
+      .map((layer) => {
+        const media = serializableImage(layer.media);
+        return media ? { ...layer, media } : null;
+      })
+      .filter(Boolean);
+    return [endpoint, { activeLayerId: history?.activeLayerId || layers.at(-1)?.id || '', layers }];
+  }).filter(([, history]) => history.layers.length));
+}
+
+function serializableFocusReferences() {
+  return Object.fromEntries(Object.entries(state.focusReferences || {}).map(([endpoint, references]) => [
+    endpoint,
+    (references || []).map(serializableImage).filter(Boolean),
+  ]).filter(([, references]) => references.length));
+}
+
 function workspaceSnapshot() {
   syncAllImageMetaFromControls();
   return {
-    version: 1,
+    version: 2,
     images: state.images.map(serializableImage),
     nodes: state.nodes.map((node) => ({ ...node })),
     blocks: state.blocks.map((block) => ({
@@ -279,6 +300,8 @@ function workspaceSnapshot() {
     view: { ...state.view },
     blockCounter: state.blockCounter,
     outputsExpanded: state.outputsExpanded,
+    focusHistories: serializableFocusHistories(),
+    focusReferences: serializableFocusReferences(),
     controls: {
       prompt: getPromptText(),
       aspect: document.getElementById('aspect').value,
@@ -322,6 +345,8 @@ function resetRuntimeState() {
   state.selectedItems = [];
   state.selected = null;
   state.focus = null;
+  state.focusHistories = {};
+  state.focusReferences = {};
   state.blockCounter = 0;
   state.outputsExpanded = false;
   state.connectFrom = null;
@@ -379,6 +404,16 @@ function applyWorkspaceDocument(document) {
     id: String(output.id),
     itemId: output.itemId ?? output.id,
   }));
+  state.focusHistories = Object.fromEntries(Object.entries(saved.focusHistories || {}).map(([endpoint, history]) => {
+    const layers = (Array.isArray(history?.layers) ? history.layers : [])
+      .filter((layer) => layer?.media?.image_name)
+      .map((layer) => ({ ...layer, media: { ...layer.media } }));
+    return [endpoint, { activeLayerId: history?.activeLayerId || layers.at(-1)?.id || '', layers }];
+  }).filter(([, history]) => history.layers.length));
+  state.focusReferences = Object.fromEntries(Object.entries(saved.focusReferences || {}).map(([endpoint, references]) => [
+    endpoint,
+    (Array.isArray(references) ? references : []).filter((image) => image?.image_name).map((image) => ({ ...image })),
+  ]).filter(([, references]) => references.length));
   state.edges = (Array.isArray(saved.edges) ? saved.edges : [])
     .filter((edge) => typeof edge?.from === 'string' && typeof edge?.to === 'string')
     .map((edge) => ({ from: edge.from, to: edge.to }));
@@ -982,13 +1017,20 @@ function deleteCanvasEndpoints(endpoints = state.selectedItems) {
     }
   });
 
+  if (state.focus && targets.has(state.focus.endpoint)) {
+    state.focus = null;
+    renderFocusView();
+  }
   state.edges = state.edges.filter((edge) => !targets.has(edge.from) && !targets.has(edge.to));
+  targets.forEach((endpoint) => {
+    delete state.focusHistories[endpoint];
+    delete state.focusReferences[endpoint];
+  });
   state.blocks.forEach((block) => {
     block.sourceOrder = (block.sourceOrder || []).filter((endpoint) => !targets.has(endpoint));
     block.hiddenSources = (block.hiddenSources || []).filter((endpoint) => !targets.has(endpoint));
   });
   if (targets.has(state.connectFrom)) state.connectFrom = null;
-  if (state.focus && targets.has(state.focus.endpoint)) closeFocus();
   setSelection([]);
   refreshSlotPreviews();
   renderTokens();
@@ -2545,7 +2587,7 @@ function syncModeControls() {
   if (mode === 'draft') {
     steps.value = '4';
     steps.disabled = true;
-    setUploadStatus('Draft mode: fast 4-step previews.');
+    setUploadStatus('Draft mode: fast 360p previews with 4 steps.');
   } else {
     steps.disabled = false;
     setUploadStatus('Pro mode: uses the selected steps.');
@@ -2554,23 +2596,37 @@ function syncModeControls() {
   syncModernSelect(steps);
 }
 
-function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'image') {
+function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'image', options = {}) {
   resultsGrid.innerHTML = '';
   const sourceEndpoint = sourceEndpointOverride || (state.selected && endpointType(state.selected) === 'block'
     ? state.selected
     : (state.blocks[0] ? blockEndpoint(state.blocks[0].id) : imageEndpoint(0)));
-  state.outputs = ids.map((id, index) => ({
+  const previousCount = options.append
+    ? state.outputs.filter((output) => output.focusEndpoint === options.outputMeta?.focusEndpoint).length
+    : 0;
+  const labelOffset = options.append && options.outputMeta?.focusQuality
+    ? state.outputs.filter((output) => (
+      output.focusEndpoint === options.outputMeta.focusEndpoint
+      && output.focusQuality === options.outputMeta.focusQuality
+    )).length
+    : 0;
+  const source = endpointBox(sourceEndpoint);
+  const created = ids.map((id, index) => ({
     id: String(id),
     itemId: id,
-    label: outputKind === 'video' ? `Video ${index + 1}` : `Variant ${index + 1}`,
+    label: options.labelPrefix
+      ? `${options.labelPrefix} ${labelOffset + index + 1}`
+      : (outputKind === 'video' ? `Video ${index + 1}` : `Variant ${index + 1}`),
     status: 'queued',
-    x: 790 + (index % 2) * 188,
-    y: 110 + Math.floor(index / 2) * 190,
+    x: source ? source.x + source.w + 210 + (index % 2) * 188 : 790 + (index % 2) * 188,
+    y: source ? source.y + Math.floor((previousCount + index) / 2) * 170 : 110 + Math.floor((previousCount + index) / 2) * 190,
     w: 168,
     h: 146,
     image: null,
+    ...(options.outputMeta || {}),
   }));
-  state.outputs.forEach((output) => addEdge(sourceEndpoint, outputEndpoint(output.id)));
+  state.outputs = options.append ? [...state.outputs, ...created] : created;
+  created.forEach((output) => addEdge(sourceEndpoint, outputEndpoint(output.id)));
   ids.forEach((id, index) => {
     const card = document.createElement('div');
     card.className = 'result-card loading';
@@ -2611,7 +2667,6 @@ function restoreResultCards() {
 
 async function pollItem(id) {
   const card = document.querySelector(`.result-card[data-item-id="${id}"]`);
-  if (!card) return;
   const response = await fetch(`/api/item/${id}`);
   const item = await response.json();
   const media = item.media || item.video || item.image;
@@ -2620,19 +2675,22 @@ async function pollItem(id) {
     if (output) {
       output.status = 'completed';
       output.image = media;
+      addOutputToFocusHistory(output);
       requestCanvasRender();
       renderFocusVariants();
     }
     const video = isVideo(media);
-    card.innerHTML = `
-      <button class="result-open" data-output-id="${id}" type="button">${mediaPreviewHtml(media)}</button>
-      <div class="result-actions">
-        <button data-output-id="${id}" data-image-action="focus" type="button" title="Open large">↗</button>
-        ${video ? '' : `<button data-output-id="${id}" data-image-action="upscale" type="button" title="Upscale">2×</button>`}
-        <button data-output-id="${id}" data-image-action="download" type="button" title="Download">↓</button>
-      </div>
-    `;
-    card.classList.remove('loading');
+    if (card) {
+      card.innerHTML = `
+        <button class="result-open" data-output-id="${id}" type="button">${mediaPreviewHtml(media)}</button>
+        <div class="result-actions">
+          <button data-output-id="${id}" data-image-action="focus" type="button" title="Open large">↗</button>
+          ${video ? '' : `<button data-output-id="${id}" data-image-action="upscale" type="button" title="Upscale">2×</button>`}
+          <button data-output-id="${id}" data-image-action="download" type="button" title="Download">↓</button>
+        </div>
+      `;
+      card.classList.remove('loading');
+    }
     return;
   }
   if (item.status === 'failed' || item.status === 'canceled') {
@@ -2642,8 +2700,10 @@ async function pollItem(id) {
       requestCanvasRender();
       renderFocusVariants();
     }
-    card.innerHTML = `<span>Failed<br><small>${item.error || 'No error details'}</small></span>`;
-    card.classList.remove('loading');
+    if (card) {
+      card.innerHTML = `<span>Failed<br><small>${item.error || 'No error details'}</small></span>`;
+      card.classList.remove('loading');
+    }
     return;
   }
   const output = state.outputs.find((entry) => String(entry.itemId) === String(id));
@@ -2652,11 +2712,20 @@ async function pollItem(id) {
     requestCanvasRender();
     renderFocusVariants();
   }
-  card.innerHTML = '<div class="result-placeholder" aria-label="Rendering"><span></span><em>Rendering</em></div>';
+  if (card) card.innerHTML = '<div class="result-placeholder" aria-label="Rendering"><span></span><em>Rendering</em></div>';
   setTimeout(() => pollItem(id), 3500);
 }
 
-async function submitGeneration({ prompt, images, sourceEndpoint = null, connections = collectConnections(), extraPayload = {} }) {
+async function submitGeneration({
+  prompt,
+  images,
+  sourceEndpoint = null,
+  connections = collectConnections(),
+  extraPayload = {},
+  appendOutputs = false,
+  outputMeta = {},
+  labelPrefix = '',
+}) {
   const cleanPrompt = (prompt || '').trim();
   if (!cleanPrompt) {
     alert('Prompt is required.');
@@ -2685,6 +2754,7 @@ async function submitGeneration({ prompt, images, sourceEndpoint = null, connect
       model_key: state.modelKey || modelSelect.value,
       ...extraPayload,
     };
+    if (payload.mode === 'draft' && !payload.preview_size) payload.preview_size = 360;
     const response = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2692,7 +2762,14 @@ async function submitGeneration({ prompt, images, sourceEndpoint = null, connect
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Generate failed');
-    createResultCards(data.item_ids, sourceEndpoint);
+    createResultCards(data.item_ids, sourceEndpoint, 'image', {
+      append: appendOutputs,
+      outputMeta: {
+        renderQuality: payload.mode === 'draft' ? 'preview' : 'standard',
+        ...outputMeta,
+      },
+      labelPrefix,
+    });
     data.item_ids.forEach((id) => pollItem(id));
     setUploadStatus(`Queued ${data.item_ids.length} variant${data.item_ids.length === 1 ? '' : 's'}.`);
     return data.item_ids;
@@ -3126,29 +3203,151 @@ function replaceEndpointMedia(endpoint, media) {
   return false;
 }
 
+function focusLayerId(kind = 'edit', media = null) {
+  const sourceId = media?.image_name || media?.video_name;
+  if (sourceId) return `${kind}:${sourceId}`;
+  return `${kind}:${Date.now()}-${Math.round(Math.random() * 10000)}`;
+}
+
+function focusHistoryFor(endpoint, image, label, baseKind = 'original') {
+  const saved = state.focusHistories[endpoint];
+  if (saved?.layers?.length) {
+    const layers = saved.layers.map((layer) => ({ ...layer, media: { ...layer.media } }));
+    const activeLayerId = layers.some((layer) => layer.id === saved.activeLayerId)
+      ? saved.activeLayerId
+      : layers.at(-1).id;
+    return { activeLayerId, layers };
+  }
+  const base = {
+    id: focusLayerId('original', image),
+    label: label ? `Original · ${label}` : 'Original',
+    kind: baseKind,
+    createdAt: Date.now(),
+    media: { ...image },
+  };
+  return { activeLayerId: base.id, layers: [base] };
+}
+
+function saveFocusCollections() {
+  const focus = state.focus;
+  if (!focus?.originalEndpoint) return;
+  state.focusHistories[focus.originalEndpoint] = {
+    activeLayerId: focus.activeLayerId,
+    layers: focus.layers.map((layer) => ({ ...layer, media: { ...layer.media } })),
+  };
+  state.focusReferences[focus.originalEndpoint] = focus.references.map((image) => ({ ...image }));
+  scheduleAutosave();
+}
+
+function activeFocusLayer() {
+  return state.focus?.layers?.find((layer) => layer.id === state.focus.activeLayerId) || null;
+}
+
+function addFocusLayer(media, label, kind = 'edit', outputId = null, activate = false) {
+  const focus = state.focus;
+  if (!focus || !media?.image_name) return null;
+  const existing = focus.layers.find((layer) => layer.media?.image_name === media.image_name);
+  const layer = existing || {
+    id: outputId ? `output:${outputId}` : focusLayerId(kind, media),
+    label: label || 'Edit',
+    kind,
+    outputId: outputId ? String(outputId) : null,
+    createdAt: Date.now(),
+    media: { ...media },
+  };
+  if (!existing) focus.layers.push(layer);
+  if (activate) {
+    focus.activeLayerId = layer.id;
+    focus.image = layer.media;
+    focus.selectedMedia = layer.media;
+    focus.label = layer.label;
+    focus.zoom = 1;
+  }
+  saveFocusCollections();
+  return layer;
+}
+
+function addOutputToFocusHistory(output) {
+  const endpoint = output?.focusEndpoint;
+  if (!endpoint || !output.image?.image_name) return null;
+  if (state.focus?.originalEndpoint === endpoint) {
+    return addFocusLayer(output.image, output.label, output.focusQuality || 'edit', output.id, false);
+  }
+  const source = imageForEndpoint(endpoint);
+  if (!source) return null;
+  const history = focusHistoryFor(endpoint, source, labelForEndpoint(endpoint));
+  const existing = history.layers.find((layer) => layer.media?.image_name === output.image.image_name);
+  if (existing) return existing;
+  const layer = {
+    id: `output:${output.id}`,
+    label: output.label || 'Edit',
+    kind: output.focusQuality || 'edit',
+    outputId: String(output.id),
+    createdAt: Date.now(),
+    media: { ...output.image },
+  };
+  history.layers.push(layer);
+  state.focusHistories[endpoint] = history;
+  scheduleAutosave();
+  return layer;
+}
+
+function activateFocusLayer(layerId) {
+  const focus = state.focus;
+  const layer = focus?.layers?.find((item) => item.id === layerId);
+  if (!layer) return;
+  focus.activeLayerId = layer.id;
+  focus.image = layer.media;
+  focus.selectedMedia = layer.media;
+  focus.label = layer.label;
+  focus.zoom = 1;
+  focus.variantIds = [];
+  clearFocusMask();
+  saveFocusCollections();
+  renderFocusView();
+  setUploadStatus(`${layer.label} selected in Focus Edit.`);
+}
+
 function openFocus(endpoint) {
   const image = imageForEndpoint(endpoint);
   if (!mediaUrl(image)) return;
+  const label = labelForEndpoint(endpoint);
+  const sourceOutput = endpointType(endpoint) === 'output'
+    ? state.outputs.find((output) => output.id === endpointId(endpoint))
+    : null;
+  const history = focusHistoryFor(endpoint, image, label, sourceOutput?.renderQuality === 'preview' ? 'preview' : 'original');
+  const activeLayer = history.layers.find((layer) => layer.id === history.activeLayerId) || history.layers.at(-1);
+  const savedReferences = state.focusReferences[endpoint];
+  const defaultReferences = collectImages()
+    .filter((item) => item.slot > 0 && item.image_name !== activeLayer.media.image_name)
+    .slice(0, 4);
   state.focus = {
     endpoint,
     originalEndpoint: endpoint,
-    originalImage: { ...image },
-    image,
-    label: labelForEndpoint(endpoint),
+    originalImage: { ...history.layers[0].media },
+    image: activeLayer.media,
+    label: activeLayer.label,
     zoom: 1,
     mode: 'direct',
     maskDirty: false,
-    selectedMedia: null,
+    selectedMedia: activeLayer.id === history.layers[0].id ? null : activeLayer.media,
+    layers: history.layers,
+    activeLayerId: activeLayer.id,
+    references: (savedReferences || defaultReferences).map((item) => ({ ...item })),
+    variantIds: [],
+    variantQuality: 'preview',
   };
   const view = ensureFocusView();
   view.querySelector('#focusPrompt').innerText = '';
+  saveFocusCollections();
   renderFocusView();
 }
 
 function closeFocus() {
+  saveFocusCollections();
   if (state.focus?.selectedMedia) {
     replaceEndpointMedia(state.focus.originalEndpoint, state.focus.selectedMedia);
-    setUploadStatus('Edited result applied to the original canvas item.');
+    setUploadStatus('Selected layer is now shown on the canvas. The original remains in Layers.');
   }
   state.focus = null;
   renderFocusView();
@@ -3178,6 +3377,13 @@ function ensureFocusView() {
       </div>
     </div>
     <div class="focus-main">
+      <aside class="focus-layers" data-image-only>
+        <div class="focus-layers-header">
+          <strong>Layers</strong>
+          <span id="focusLayerCount">1</span>
+        </div>
+        <div id="focusLayerList" class="focus-layer-list"></div>
+      </aside>
       <div class="focus-stage">
         <div class="focus-stage-scroll">
           <div id="focusMediaWrap" class="focus-media-wrap">
@@ -3202,17 +3408,26 @@ function ensureFocusView() {
           <span>References</span>
           <button data-focus-action="use-ref" type="button">Add ref</button>
         </div>
+        <input id="focusReferenceUpload" type="file" accept="image/*" multiple hidden>
+        <div id="focusReferenceList" class="focus-reference-list" data-image-only></div>
         <div class="focus-prompt-wrap">
           <div id="focusPrompt" class="prompt-editor" contenteditable="true" spellcheck="true" data-placeholder="Describe the edit for this image."></div>
           <button data-focus-action="enhance-prompt" class="focus-enhance-prompt" type="button" title="Improve prompt">✧</button>
         </div>
-        <button data-focus-action="generate" class="generate-button" type="button">Generate from focus</button>
-        <p id="focusStatus" class="note">Direct edit uses the focused image as @1. Inpaint changes only the painted area.</p>
+        <div class="focus-render-actions" data-image-only>
+          <button data-focus-action="generate-preview" class="generate-button" type="button">Preview 360p</button>
+          <button id="focusStandardButton" data-focus-action="render-standard" type="button" hidden>Render standard</button>
+        </div>
+        <p id="focusStatus" class="note">Create quick 360p previews, choose one, then render it at standard quality.</p>
       </aside>
     </div>
   `;
   document.body.appendChild(view);
   view.addEventListener('click', handleFocusAction);
+  view.querySelector('#focusReferenceUpload').addEventListener('change', async (event) => {
+    await uploadFocusReferences(event.target.files);
+    event.target.value = '';
+  });
   wireFocusMask(view);
   return view;
 }
@@ -3225,6 +3440,7 @@ function setFocusBusy(busy, text = '') {
   });
   const status = view.querySelector('#focusStatus');
   if (status && text) status.textContent = text;
+  if (state.focus) renderFocusReferences();
 }
 
 function clearFocusMask() {
@@ -3315,6 +3531,84 @@ function focusMaskBlob() {
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
 }
 
+function renderFocusLayers() {
+  const view = ensureFocusView();
+  const list = view.querySelector('#focusLayerList');
+  const focus = state.focus;
+  if (!list || !focus) return;
+  const layers = [...focus.layers].reverse();
+  view.querySelector('#focusLayerCount').textContent = String(layers.length);
+  list.innerHTML = layers.map((layer) => {
+    const active = layer.id === focus.activeLayerId;
+    const kindLabel = {
+      original: 'Original',
+      preview: '360p',
+      standard: 'Standard',
+      upscale: 'Upscaled',
+      edit: 'Edit',
+    }[layer.kind] || 'Edit';
+    return `
+      <button class="focus-layer${active ? ' active' : ''}" data-focus-layer-id="${escapeHtml(layer.id)}" type="button" aria-pressed="${active ? 'true' : 'false'}">
+        <span class="focus-layer-thumb"><img src="${imageUrl(layer.media, 'full')}" alt=""></span>
+        <span class="focus-layer-copy"><strong>${escapeHtml(layer.label)}</strong><small>${kindLabel}</small></span>
+        <span class="focus-layer-state" aria-hidden="true"></span>
+      </button>
+    `;
+  }).join('');
+}
+
+function renderFocusReferences() {
+  const view = ensureFocusView();
+  const list = view.querySelector('#focusReferenceList');
+  const references = state.focus?.references || [];
+  if (!list) return;
+  list.innerHTML = references.length ? references.map((image, index) => `
+    <div class="focus-reference" title="Reference ${index + 1}">
+      <img src="${imageUrl(image, 'full')}" alt="Reference ${index + 1}">
+      <span>@${index + 2}</span>
+      <button data-focus-reference-remove="${index}" type="button" title="Remove reference" aria-label="Remove reference ${index + 1}">−</button>
+    </div>
+  `).join('') : '<span class="focus-reference-empty">No extra references</span>';
+  const addButton = view.querySelector('[data-focus-action="use-ref"]');
+  if (addButton) addButton.disabled = state.focusBusy || references.length >= 4;
+}
+
+async function uploadFocusReferences(fileList) {
+  const focus = state.focus;
+  if (!focus) return;
+  const files = Array.from(fileList || []).filter((file) => file.type.startsWith('image/'));
+  const available = Math.max(0, 4 - focus.references.length);
+  if (!files.length || available < 1) {
+    if (available < 1) setUploadStatus('Focus Edit already has four references.', 'error');
+    return;
+  }
+  setFocusBusy(true, 'Uploading Focus Edit references...');
+  try {
+    for (const file of files.slice(0, available)) {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch('/api/upload', { method: 'POST', body: form });
+      const image = await response.json();
+      if (!response.ok) throw new Error(image.error || `Could not upload ${file.name}.`);
+      focus.references.push({ ...image, role: 'reference', note: 'Focus Edit reference.' });
+    }
+    saveFocusCollections();
+    renderFocusReferences();
+    setFocusBusy(false, `${focus.references.length} reference${focus.references.length === 1 ? '' : 's'} ready for Focus Edit.`);
+  } catch (error) {
+    setFocusBusy(false, error.message || 'Reference upload failed.');
+    setUploadStatus(error.message || 'Reference upload failed.', 'error');
+  }
+}
+
+function removeFocusReference(index) {
+  if (!state.focus?.references?.[index]) return;
+  state.focus.references.splice(index, 1);
+  saveFocusCollections();
+  renderFocusReferences();
+  setUploadStatus('Focus Edit reference removed.');
+}
+
 function renderFocusView() {
   const view = ensureFocusView();
   const focus = state.focus;
@@ -3346,6 +3640,11 @@ function renderFocusView() {
   view.querySelector('[data-focus-action="mode-inpaint"]')?.classList.toggle('active', focus.mode === 'inpaint');
   view.querySelector('.focus-mask-tools').hidden = focus.mode !== 'inpaint' || videoFocus;
   view.querySelector('#focusMask').hidden = focus.mode !== 'inpaint' || videoFocus;
+  renderFocusLayers();
+  renderFocusReferences();
+  const standardButton = view.querySelector('#focusStandardButton');
+  const activeLayer = activeFocusLayer();
+  standardButton.hidden = videoFocus || activeLayer?.kind !== 'preview';
   renderFocusVariants();
   setFocusBusy(state.focusBusy);
 }
@@ -3357,6 +3656,12 @@ function renderFocusVariants() {
     if (rail) rail.innerHTML = '';
     return;
   }
+  state.focus.variantIds.forEach((id) => {
+    const output = state.outputs.find((item) => String(item.itemId) === String(id) || String(item.id) === String(id));
+    if (!output?.image?.image_name || output.focusEndpoint !== state.focus.originalEndpoint) return;
+    addOutputToFocusHistory(output);
+  });
+  renderFocusLayers();
   rail.innerHTML = state.focus.variantIds.map((id, index) => {
     const output = state.outputs.find((item) => String(item.itemId) === String(id) || String(item.id) === String(id));
     const image = output?.image;
@@ -3389,15 +3694,6 @@ function useFocusImageAsSlot(slot) {
   renderTokens();
   renderCanvas();
   setUploadStatus(`${labelFor(slot)} now uses ${state.focus.label}.`);
-}
-
-function addFocusImageAsReference() {
-  const slot = firstEmptySlot(1);
-  if (slot < 1) {
-    setUploadStatus('All four reference slots are already filled.', 'error');
-    return;
-  }
-  useFocusImageAsSlot(slot);
 }
 
 function moveEndpoint(endpoint, dx, dy, origin) {
@@ -3475,14 +3771,10 @@ async function upscaleImage(image, sourceEndpoint = null, directDownload = true,
     const completedScale = Number(upscaled.scale || requestedScale);
     const output = createCompletedOutput(upscaled, `${completedScale}x AI Upscale`, sourceEndpoint);
     if (state.focus) {
-      state.focus = {
-        ...state.focus,
-        image: upscaled,
-        selectedMedia: upscaled,
-        label: `${completedScale}x AI Upscale`,
-        zoom: 1,
-      };
-      renderFocusView();
+      output.focusEndpoint = state.focus.originalEndpoint;
+      output.focusQuality = 'upscale';
+      const layer = addFocusLayer(upscaled, `${completedScale}x AI Upscale`, 'upscale', output.id, false);
+      if (layer) activateFocusLayer(layer.id);
     }
     setUploadStatus('RealESRGAN upscale ready. Download started.');
     setFocusBusy(false, 'RealESRGAN upscale ready. Download started.');
@@ -3496,25 +3788,43 @@ async function upscaleImage(image, sourceEndpoint = null, directDownload = true,
   }
 }
 
-async function generateFromFocus() {
+async function generateFromFocus(quality = 'preview') {
   const focus = state.focus;
   if (!focus?.image || isVideo(focus.image)) return;
-  const prompt = focusPromptText();
-  if (!prompt) {
+  const requestedPrompt = focusPromptText();
+  if (!requestedPrompt) {
     setUploadStatus('Describe the edit first.', 'error');
     return;
   }
+  const standardRender = quality === 'standard';
+  const activeLayer = activeFocusLayer();
+  if (standardRender && activeLayer?.kind !== 'preview') {
+    setUploadStatus('Choose a 360p preview layer before rendering standard quality.', 'error');
+    return;
+  }
+  const prompt = standardRender
+    ? `Use image 1 as the exact approved composition and visual result. Re-render it at standard resolution with clean high-resolution detail. Preserve framing, geometry, subjects, text placement, colors, and all requested changes exactly. Do not redesign the image. Original edit instruction: ${requestedPrompt}`
+    : requestedPrompt;
   const focusImage = {
     ...focus.image,
     slot: 0,
     role: 'main',
-    note: 'Focused source image for this edit.',
+    note: standardRender
+      ? 'Approved 360p preview to reproduce at standard quality.'
+      : 'Focused source image for this edit.',
   };
-  const references = collectImages()
-    .filter((image) => image.slot > 0 && image.image_name !== focus.image.image_name);
+  const references = focus.references
+    .filter((image) => image.image_name !== focus.image.image_name)
+    .slice(0, 4)
+    .map((image, index) => ({
+      ...image,
+      slot: index + 1,
+      role: image.role || 'reference',
+      note: image.note || 'Focus Edit reference.',
+    }));
   try {
     let maskImageName = null;
-    if (focus.mode === 'inpaint') {
+    if (!standardRender && focus.mode === 'inpaint') {
       if (!focus.maskDirty) {
         setUploadStatus('Paint the area you want to change first.', 'error');
         return;
@@ -3528,20 +3838,38 @@ async function generateFromFocus() {
       if (!response.ok) throw new Error(mask.error || 'Mask upload failed.');
       maskImageName = mask.image_name;
     }
-    setFocusBusy(true, focus.mode === 'inpaint' ? 'Queueing masked variants...' : 'Queueing focused variants...');
+    setFocusBusy(true, standardRender
+      ? 'Queueing the selected preview at standard quality...'
+      : (focus.mode === 'inpaint' ? 'Queueing masked 360p previews...' : 'Queueing 360p previews...'));
     state.focus.variantIds = [];
     renderFocusVariants();
+    const extraPayload = standardRender
+      ? { mode: 'pro', steps: 8, count: 1 }
+      : { mode: 'draft', steps: 4, preview_size: 360, count: Number(document.getElementById('count').value) || 2 };
+    if (maskImageName) extraPayload.mask_image_name = maskImageName;
     const ids = await submitGeneration({
       prompt,
       images: [focusImage, ...references],
-      sourceEndpoint: focus.endpoint,
-      connections: [`${labelForEndpoint(focus.endpoint)} opened in Focus Edit as @1`],
-      extraPayload: maskImageName ? { mask_image_name: maskImageName } : {},
+      sourceEndpoint: focus.originalEndpoint,
+      connections: [
+        `${labelForEndpoint(focus.originalEndpoint)} opened in Focus Edit as @1`,
+        ...references.map((_, index) => `Focus reference @${index + 2}`),
+      ],
+      extraPayload,
+      appendOutputs: true,
+      outputMeta: {
+        focusEndpoint: focus.originalEndpoint,
+        focusQuality: standardRender ? 'standard' : 'preview',
+      },
+      labelPrefix: standardRender ? 'Standard' : 'Preview',
     });
     if (ids?.length) {
       state.focus.variantIds = ids.map(String);
+      state.focus.variantQuality = standardRender ? 'standard' : 'preview';
       renderFocusVariants();
-      setFocusBusy(false, 'Choose a variant below, or generate again with a tighter prompt.');
+      setFocusBusy(false, standardRender
+        ? 'Standard render queued. Choose it below when ready.'
+        : 'Choose a 360p preview below. Its layer can then be rendered at standard quality.');
     } else {
       setFocusBusy(false, 'Focus generation did not queue.');
     }
@@ -3566,19 +3894,27 @@ function improveFocusPrompt() {
 function chooseFocusVariant(id) {
   const output = state.outputs.find((item) => String(item.itemId) === String(id) || String(item.id) === String(id));
   if (!output?.image) return;
-  state.focus = {
-    ...state.focus,
-    image: output.image,
-    selectedMedia: output.image,
-    label: output.label || 'Focused variant',
-    zoom: 1,
-    variantIds: [],
-  };
-  renderFocusView();
-  setUploadStatus(`${state.focus.label} selected in Focus Edit.`);
+  const layer = addFocusLayer(
+    output.image,
+    output.label || 'Focused variant',
+    output.focusQuality || state.focus.variantQuality || 'edit',
+    output.id,
+    false,
+  );
+  if (layer) activateFocusLayer(layer.id);
 }
 
 function handleFocusAction(event) {
+  const layerButton = event.target.closest('[data-focus-layer-id]');
+  if (layerButton && state.focus && !state.focusBusy) {
+    activateFocusLayer(layerButton.dataset.focusLayerId);
+    return;
+  }
+  const removeReferenceButton = event.target.closest('[data-focus-reference-remove]');
+  if (removeReferenceButton && state.focus && !state.focusBusy) {
+    removeFocusReference(Number(removeReferenceButton.dataset.focusReferenceRemove));
+    return;
+  }
   const variantButton = event.target.closest('[data-focus-variant-action]');
   if (variantButton) {
     chooseFocusVariant(variantButton.dataset.focusVariantId);
@@ -3611,9 +3947,10 @@ function handleFocusAction(event) {
   if (action === 'download') triggerDownload(state.focus.image);
   if (action === 'upscale') upscaleImage(state.focus.image, state.focus.endpoint, true);
   if (action === 'use-main') useFocusImageAsSlot(0);
-  if (action === 'use-ref') addFocusImageAsReference();
+  if (action === 'use-ref') ensureFocusView().querySelector('#focusReferenceUpload')?.click();
   if (action === 'enhance-prompt') improveFocusPrompt();
-  if (action === 'generate') generateFromFocus();
+  if (action === 'generate-preview') generateFromFocus('preview');
+  if (action === 'render-standard') generateFromFocus('standard');
 }
 
 function handleImageAction(event) {

@@ -2274,7 +2274,122 @@ h1 {
 .focus-main {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 310px;
+  grid-template-columns: 168px minmax(0, 1fr) 310px;
+}
+
+.focus-layers {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 10px;
+  border-right: 1px solid var(--border);
+  background: #0c0c0f;
+  overflow: hidden;
+}
+
+.focus-layers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 3px;
+  color: #d7d7da;
+}
+
+.focus-layers-header strong {
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.focus-layers-header span {
+  color: #85858b;
+  font-size: 9px;
+}
+
+.focus-layer-list {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.focus-layer {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 7px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #303034;
+  border-radius: 7px;
+  background: #1b1b1e;
+  color: #d9d9dc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.focus-layer:hover {
+  border-color: #515156;
+  background: #232326;
+}
+
+.focus-layer.active {
+  border-color: #706cf0;
+  background: #29292e;
+}
+
+.focus-layer-thumb {
+  width: 48px;
+  height: 38px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #101012;
+}
+
+.focus-layer-thumb img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  display: block;
+  object-fit: cover;
+}
+
+.focus-layer-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.focus-layer-copy strong,
+.focus-layer-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-layer-copy strong {
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.focus-layer-copy small {
+  color: #8f8f95;
+  font-size: 8px;
+}
+
+.focus-layer-state {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4b4b50;
+}
+
+.focus-layer.active .focus-layer-state {
+  background: #8d89ff;
 }
 
 .focus-stage {
@@ -2344,6 +2459,93 @@ h1 {
   color: #f0f0f2;
   font-size: 11px;
   font-weight: 600;
+}
+
+.focus-reference-list {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.focus-reference {
+  position: relative;
+  width: 50px;
+  height: 42px;
+  flex: 0 0 50px;
+  overflow: visible;
+  border: 1px solid #3b3b40;
+  border-radius: 7px;
+  background: #1d1d20;
+}
+
+.focus-reference img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  display: block;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.focus-reference > span {
+  position: absolute;
+  left: 4px;
+  bottom: 3px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(10, 10, 12, 0.84);
+  color: #f0f0f2;
+  font-size: 8px;
+  font-weight: 650;
+}
+
+.focus-reference button {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #55555a;
+  border-radius: 50%;
+  background: #29292d;
+  color: #ededee;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.focus-reference-empty {
+  color: #74747a;
+  font-size: 9px;
+}
+
+.focus-render-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+}
+
+.focus-render-actions:has(#focusStandardButton:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+#focusStandardButton {
+  min-height: 42px;
+  border: 1px solid #55515f;
+  border-radius: 8px;
+  background: #323238;
+  color: #f0f0f2;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
 }
 
 #focusPrompt:empty::before {
@@ -2721,6 +2923,10 @@ textarea {
     min-height: 0;
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
+  }
+
+  .focus-main {
+    grid-template-columns: 132px minmax(0, 1fr) 280px;
   }
 
   .canvas-area {
@@ -3395,7 +3601,29 @@ textarea {
 
   .focus-main {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(320px, 1fr) auto;
+    grid-template-rows: auto minmax(320px, 1fr) auto;
+  }
+
+  .focus-layers {
+    max-height: 104px;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .focus-layers-header {
+    display: none;
+  }
+
+  .focus-layer-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .focus-layer {
+    width: 150px;
+    flex: 0 0 150px;
   }
 
   .focus-panel {

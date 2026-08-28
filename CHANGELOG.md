@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 - 2026-08-28
+
+- Made Draft mode a true 360p, four-step render path across the main and specialized workflows.
+- Added a Focus Edit promotion step that uses the selected 360p preview as image guidance for one standard-resolution, eight-step render.
+- Added focus-only reference uploads with thumbnails, `@2` through `@5` ordering, removal, generation wiring, and workspace persistence.
+- Added a persistent Layers sidebar to Focus Edit. Original, preview, standard, and upscaled images remain available as reversible versions.
+- Changed Focus generation to append outputs instead of replacing earlier renders, including background polling when result cards are no longer visible.
+- Added responsive horizontal Focus layers on small screens while retaining the full-width image stage.
+
 ## 1.2.3 - 2026-08-28
 
 - Rebuilt the Focus Edit pending variant as a contained neutral loader with a dedicated spinner and compact status label.
