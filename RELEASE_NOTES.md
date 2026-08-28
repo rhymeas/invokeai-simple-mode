@@ -1,6 +1,10 @@
-# InvokeAI Simple Mode v1.5.0
+# InvokeAI Simple Mode v1.6.0
 
-This release improves Focus Edit and canvas organization. The top bar has more room, the active image version can be renamed by double-clicking its title, and Layers now float in a compact rounded panel instead of occupying the full left edge.
+This release fixes Focus Edit layer switching, generated-result connections, and specialized node execution. Eye controls now update the displayed layer immediately, and generated results can be opened or connected downstream even when InvokeAI returns numeric queue IDs.
+
+Variate, New view, Extract, and related nodes now send their selected controls and workflow relationships into the generation request. Full quality explicitly uses the standard render path, while 360p remains a four-step preview. Workflow and Focus previews preserve the full image instead of cropping it.
+
+The top bar has more room, the active image version can be renamed by double-clicking its title, and Layers float in a compact rounded panel instead of occupying the full left edge.
 
 Use the new Pan tool to move a zoomed image with the left mouse button, or hold and drag the middle mouse button at any time. Mouse-wheel zoom remains centered over the image, and panning is disabled automatically while painting an inpaint mask.
 
@@ -8,7 +12,7 @@ Canvas Layout now arranges source images, action nodes, and results into a compa
 
 ## Important
 
-- Windows 10/11 only for v1.5.0.
+- Windows 10/11 only for v1.6.0.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.

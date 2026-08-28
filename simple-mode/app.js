@@ -624,6 +624,16 @@ function isSpecializedNode(kind) {
   return Object.prototype.hasOwnProperty.call(specializedNodeDefaults, kind);
 }
 
+function minimumWorkflowBlockHeight(block) {
+  if (!block) return 300;
+  if (isSpecializedNode(block.kind)) return 410;
+  if (block.kind === 'modify' || block.nativeFeature?.id === 'core:modify') {
+    const sourceCount = orderedSourcesForBlock(block).length;
+    return 300 + Math.max(0, Math.ceil(Math.max(0, sourceCount - 3) / 3) * 58);
+  }
+  return block.nativeFeature ? 260 : block.kind === 'animate' ? 390 : 300;
+}
+
 function ensureSpecializedSettings(block) {
   if (!block || !isSpecializedNode(block.kind)) return null;
   if (!block.specializedVersion) {
@@ -961,7 +971,8 @@ function endpointBox(endpoint) {
     return { x: block.x, y: block.y, w: block.w || 340, h: block.h || 300, kind: 'block', block };
   }
   if (endpointType(endpoint) === 'output') {
-    const output = state.outputs.find((item) => item.id === endpointId(endpoint));
+    const outputId = String(endpointId(endpoint));
+    const output = state.outputs.find((item) => String(item.id) === outputId);
     if (!output) return null;
     return { x: output.x, y: output.y, w: output.w || 178, h: output.h || 154, kind: 'output', output };
   }
@@ -1058,7 +1069,8 @@ function imageForEndpoint(endpoint) {
     return state.images[Number(endpointId(endpoint))] || null;
   }
   if (endpointType(endpoint) === 'output') {
-    return state.outputs.find((output) => output.id === endpointId(endpoint))?.image || null;
+    const outputId = String(endpointId(endpoint));
+    return state.outputs.find((output) => String(output.id) === outputId)?.image || null;
   }
   return null;
 }
@@ -1069,7 +1081,8 @@ function labelForEndpoint(endpoint) {
     return labelFor(slot);
   }
   if (endpointType(endpoint) === 'output') {
-    return state.outputs.find((output) => output.id === endpointId(endpoint))?.label || 'Output';
+    const outputId = String(endpointId(endpoint));
+    return state.outputs.find((output) => String(output.id) === outputId)?.label || 'Output';
   }
   if (endpointType(endpoint) === 'block') {
     return state.blocks.find((block) => block.id === endpointId(endpoint))?.title || 'Block';
@@ -1928,6 +1941,11 @@ function renderWorkflowBlock(block) {
   const endpoint = blockEndpoint(block.id);
   const isModify = block.kind === 'modify' || block.nativeFeature?.id === 'core:modify';
   const title = displayBlockTitle(block);
+  const minimumHeight = minimumWorkflowBlockHeight(block);
+  if ((Number(block.h) || 0) < minimumHeight) {
+    block.h = minimumHeight;
+    scheduleAutosave();
+  }
   if (isModify) block.title = title;
   const icon = isModify ? '' : block.icon;
   element.className = `workflow-block ${block.nativeFeature ? 'native-block' : block.kind}${block.infoOpen ? ' info-open' : ''}${block.menuOpen ? ' menu-open' : ''}${isSelected(endpoint) ? ' selected' : ''}${state.dropTargetBlockId === block.id ? ' drop-target' : ''}`;
@@ -2787,6 +2805,7 @@ async function submitGeneration({
   sourceEndpoint = null,
   connections = collectConnections(),
   extraPayload = {},
+  generationProfile = null,
   appendOutputs = false,
   outputMeta = {},
   labelPrefix = '',
@@ -2819,6 +2838,7 @@ async function submitGeneration({
       model_key: state.modelKey || modelSelect.value,
       ...extraPayload,
     };
+    if (generationProfile) payload.generation_profile = generationProfile;
     if (payload.mode === 'draft' && !payload.preview_size) payload.preview_size = 360;
     const response = await fetch('/api/generate', {
       method: 'POST',
@@ -2921,13 +2941,23 @@ function generationProfileForBlock(block) {
       .filter(Boolean).join(' ');
   }
 
-  const extraPayload = { count: Math.max(1, Math.min(4, Number(settings.count) || 1)) };
-  if (settings.quality === 'preview') {
-    extraPayload.mode = 'draft';
-    extraPayload.steps = 4;
-    extraPayload.preview_size = 360;
-  }
-  return { prompt, extraPayload };
+  const extraPayload = {
+    count: Math.max(1, Math.min(4, Number(settings.count) || 1)),
+    mode: settings.quality === 'preview' ? 'draft' : 'pro',
+    steps: settings.quality === 'preview'
+      ? 4
+      : Math.max(1, Math.min(16, Number(document.getElementById('steps').value) || 8)),
+    preview_size: settings.quality === 'preview' ? 360 : 0,
+  };
+  return {
+    prompt,
+    extraPayload,
+    generationProfile: {
+      kind: block.kind,
+      settings: { ...settings },
+      source_policy: 'Image 1 is the main source; remaining connected images are references in token order.',
+    },
+  };
 }
 
 async function generateFromBlock(blockId) {
@@ -2950,6 +2980,7 @@ async function generateFromBlock(blockId) {
     sourceEndpoint: blockEndpoint(block.id),
     connections: collectConnectionsForBlock(block),
     extraPayload: profile.extraPayload,
+    generationProfile: profile.generationProfile,
   });
 }
 
@@ -3254,7 +3285,7 @@ function replaceEndpointMedia(endpoint, media) {
     return true;
   }
   if (endpointType(endpoint) === 'output') {
-    const output = state.outputs.find((item) => item.id === endpointId(endpoint));
+  const output = state.outputs.find((item) => String(item.id) === String(endpointId(endpoint)));
     if (!output) return false;
     output.image = { ...media };
     output.status = 'completed';
@@ -3372,6 +3403,15 @@ function activateFocusLayer(layerId) {
   const focus = state.focus;
   const layer = focus?.layers?.find((item) => item.id === layerId);
   if (!layer || layer.visible === false) return;
+  setActiveFocusLayer(layer);
+  saveFocusCollections();
+  renderFocusView();
+  setUploadStatus(`${layer.label} selected in Focus Edit.`);
+}
+
+function setActiveFocusLayer(layer) {
+  const focus = state.focus;
+  if (!focus || !layer || layer.visible === false) return;
   focus.activeLayerId = layer.id;
   focus.image = layer.media;
   focus.selectedMedia = layer.id === focus.layers[0]?.id ? null : layer.media;
@@ -3381,9 +3421,6 @@ function activateFocusLayer(layerId) {
   focus.panY = 0;
   focus.variantIds = [];
   clearFocusMask();
-  saveFocusCollections();
-  renderFocusView();
-  setUploadStatus(`${layer.label} selected in Focus Edit.`);
 }
 
 function toggleFocusLayerVisibility(layerId) {
@@ -3392,19 +3429,9 @@ function toggleFocusLayerVisibility(layerId) {
   if (!layer || layer === focus.layers[0]) return;
   const wasVisible = layer.visible !== false;
   layer.visible = !wasVisible;
-  if (layer.visible === false && layer.id === focus.activeLayerId) {
-    const fallback = topVisibleFocusLayer(layer.id);
-    if (fallback) {
-      focus.activeLayerId = fallback.id;
-      focus.image = fallback.media;
-      focus.selectedMedia = fallback.id === focus.layers[0]?.id ? null : fallback.media;
-      focus.label = fallback.label;
-      focus.zoom = 1;
-      focus.panX = 0;
-      focus.panY = 0;
-      focus.variantIds = [];
-      clearFocusMask();
-    }
+  const nextLayer = layer.visible ? layer : topVisibleFocusLayer(layer.id);
+  if (nextLayer) {
+    setActiveFocusLayer(nextLayer);
   }
   saveFocusCollections();
   renderFocusView();
@@ -3457,7 +3484,7 @@ function openFocus(endpoint) {
   if (!mediaUrl(image)) return;
   const label = labelForEndpoint(endpoint);
   const sourceOutput = endpointType(endpoint) === 'output'
-    ? state.outputs.find((output) => output.id === endpointId(endpoint))
+    ? state.outputs.find((output) => String(output.id) === String(endpointId(endpoint)))
     : null;
   const history = focusHistoryFor(endpoint, image, label, sourceOutput?.renderQuality === 'preview' ? 'preview' : 'original');
   const activeLayer = history.layers.find((layer) => layer.id === history.activeLayerId) || history.layers.at(-1);
@@ -4023,7 +4050,7 @@ function moveEndpoint(endpoint, dx, dy, origin) {
     }
   }
   if (endpointType(endpoint) === 'output') {
-    const output = state.outputs.find((item) => item.id === endpointId(endpoint));
+    const output = state.outputs.find((item) => String(item.id) === String(endpointId(endpoint)));
     if (output) {
       output.x = origin.x + dx;
       output.y = origin.y + dy;

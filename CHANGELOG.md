@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.0 - 2026-08-28
+
+- Fixed Focus Edit layer eye controls so showing or hiding a layer immediately updates the displayed image without selecting the row first.
+- Fixed result endpoint ID matching so generated images can open in Focus Edit and connect into downstream nodes reliably.
+- Passed specialized node controls and workflow connections into the generation request and made Full quality explicitly use the standard render path.
+- Expanded old specialized nodes to a usable height and changed workflow, result, Focus variant, and layer previews to preserve the complete image instead of cropping it.
+
 ## 1.5.0 - 2026-08-28
 
 - Added double-click renaming for the active image version in Focus Edit while keeping the underlying InvokeAI filename stable.

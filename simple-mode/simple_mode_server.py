@@ -844,7 +844,7 @@ def dimensions_for(aspect, source_image, preview_size=None):
     return width, height
 
 
-def build_prompt(prompt, images, connections=None):
+def build_prompt(prompt, images, connections=None, generation_profile=None):
     slot_to_input = {
         int(image.get("slot", index - 1)) + 1: index
         for index, image in enumerate(images, start=1)
@@ -870,14 +870,30 @@ def build_prompt(prompt, images, connections=None):
                 lines.append(f"Image {input_index} serves as the {role} reference. {role_instruction}")
         lines.append("")
         lines.append("Follow the primary instruction exactly. Preserve all unmentioned content from image 1 unless the instruction explicitly requests a broader redesign.")
+    if connections:
+        lines.append("")
+        lines.append("WORKFLOW CONNECTIONS:")
+        lines.extend(f"- {str(connection).strip()}" for connection in connections if str(connection).strip())
+    if isinstance(generation_profile, dict):
+        node_kind = str(generation_profile.get("kind") or "workflow").strip()
+        settings = generation_profile.get("settings")
+        lines.append("")
+        lines.append("NODE CONTROLS:")
+        lines.append(f"This request comes from the {node_kind} node. Apply its selected controls as hard constraints.")
+        if isinstance(settings, dict):
+            for key, value in settings.items():
+                if value in (None, "") or key in {"count", "quality"}:
+                    continue
+                label = str(key).replace("_", " ")
+                lines.append(f"- {label}: {value}")
     return "\n".join(lines)
 
 
-def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None, preview_size=None, model_key=None):
+def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None, preview_size=None, model_key=None, generation_profile=None):
     main_model, qwen_model, vae_model = choose_models(model_key)
     source_image = next((image for image in images if image), None)
     width, height = dimensions_for(aspect, source_image, preview_size)
-    prompt_text = build_prompt(prompt, images, connections)
+    prompt_text = build_prompt(prompt, images, connections, generation_profile)
     image_fields = [{"image_name": image["image_name"]} for image in images if image.get("image_name")]
     guidance = 3.5 if mode == "draft" else 4.0
 
@@ -1154,7 +1170,7 @@ def ensure_generation_queue_idle():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "InvokeSimpleMode/1.5.0"
+    server_version = "InvokeSimpleMode/1.6.0"
 
     def log_message(self, fmt, *args):
         return
@@ -1469,6 +1485,9 @@ class Handler(BaseHTTPRequestHandler):
         payload = self.read_json()
         images = payload.get("images") or []
         connections = payload.get("connections") or []
+        generation_profile = payload.get("generation_profile")
+        if not isinstance(generation_profile, dict):
+            generation_profile = None
         prompt = (payload.get("prompt") or "").strip()
         if not prompt:
             self.send_json({"error": "Prompt is required."}, status=400)
@@ -1495,7 +1514,7 @@ class Handler(BaseHTTPRequestHandler):
             seed = (base_seed + index * 9973) % 4294967295
             graph = build_graph(
                 images, prompt, aspect, steps, seed, connections, mode, mask_image_name, preview_size,
-                model_key=model_key,
+                model_key=model_key, generation_profile=generation_profile,
             )
             body = {
                 "batch": {
