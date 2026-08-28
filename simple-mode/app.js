@@ -3429,7 +3429,29 @@ function ensureFocusView() {
     event.target.value = '';
   });
   wireFocusMask(view);
+  wireFocusZoom(view);
   return view;
+}
+
+function setFocusZoom(value) {
+  if (!state.focus) return;
+  state.focus.zoom = Math.max(0.2, Math.min(4, Number(value) || 1));
+  const view = ensureFocusView();
+  const wrap = view.querySelector('#focusMediaWrap');
+  if (wrap) wrap.style.transform = `scale(${state.focus.zoom})`;
+  const label = view.querySelector('#focusZoom');
+  if (label) label.textContent = `${Math.round(state.focus.zoom * 100)}%`;
+}
+
+function wireFocusZoom(view) {
+  const media = view.querySelector('#focusMediaWrap');
+  media.addEventListener('wheel', (event) => {
+    if (!state.focus) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const delta = Math.max(-60, Math.min(60, event.deltaY));
+    setFocusZoom((state.focus.zoom || 1) * Math.exp(-delta * 0.003));
+  }, { passive: false });
 }
 
 function setFocusBusy(busy, text = '') {
@@ -3937,12 +3959,10 @@ function handleFocusAction(event) {
     setUploadStatus('Inpaint mask cleared.');
   }
   if (action === 'zoom-in') {
-    state.focus.zoom = Math.min(4, (state.focus.zoom || 1) * 1.2);
-    renderFocusView();
+    setFocusZoom((state.focus.zoom || 1) * 1.2);
   }
   if (action === 'zoom-out') {
-    state.focus.zoom = Math.max(0.2, (state.focus.zoom || 1) / 1.2);
-    renderFocusView();
+    setFocusZoom((state.focus.zoom || 1) / 1.2);
   }
   if (action === 'download') triggerDownload(state.focus.image);
   if (action === 'upscale') upscaleImage(state.focus.image, state.focus.endpoint, true);

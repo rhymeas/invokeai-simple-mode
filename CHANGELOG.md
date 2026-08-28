@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 - 2026-08-28
+
+- Added mouse-wheel and trackpad zoom directly over the image in Focus Edit.
+- Prevented page and stage scrolling while the pointer is over the focused image.
+- Unified wheel, plus, and minus zoom behavior with the existing 20% to 400% limits.
+
 ## 1.3.0 - 2026-08-28
 
 - Made Draft mode a true 360p, four-step render path across the main and specialized workflows.
