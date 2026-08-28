@@ -650,11 +650,50 @@ def model_field(model):
     }
 
 
-def choose_models():
-    models = invoke_json("/api/v2/models/?with_config=true", timeout=15)["models"]
-    main = next((m for m in models if m.get("name") == "flux-2-klein-9b-Q4_K_M.gguf"), None)
-    if main is None:
-        main = next((m for m in models if m.get("name") == "flux-2-klein-4b-Q4_K_M.gguf"), None)
+def flux2_klein_models(models):
+    compatible = [
+        model for model in models
+        if model.get("base") == "flux2"
+        and model.get("type") == "main"
+        and model.get("variant") in {"klein_9b", "klein_4b"}
+    ]
+    return sorted(compatible, key=lambda model: model.get("variant") != "klein_9b")
+
+
+def image_model_catalog():
+    models = invoke_json("/api/v2/models/?with_config=true", timeout=15).get("models") or []
+    compatible = flux2_klein_models(models)
+    has_vae = any(model.get("type") == "vae" and model.get("base") == "flux2" for model in models)
+    items = []
+    for model in compatible:
+        encoder_variant = "qwen3_8b" if model.get("variant") == "klein_9b" else "qwen3_4b"
+        has_encoder = any(
+            candidate.get("type") == "qwen3_encoder" and candidate.get("variant") == encoder_variant
+            for candidate in models
+        )
+        if not has_vae or not has_encoder:
+            continue
+        size = "9B" if model.get("variant") == "klein_9b" else "4B"
+        quant_match = re.search(r"(Q\d+(?:_[A-Z0-9]+)*)", str(model.get("name") or ""), re.IGNORECASE)
+        quant = f" ({quant_match.group(1).replace('_', ' ')})" if quant_match else ""
+        items.append({
+            "key": model.get("key"),
+            "name": model.get("name"),
+            "label": f"FLUX.2 Klein {size}{quant}",
+            "variant": model.get("variant"),
+        })
+    return {"models": items, "default_key": items[0]["key"] if items else None}
+
+
+def choose_models(model_key=None):
+    models = invoke_json("/api/v2/models/?with_config=true", timeout=15).get("models") or []
+    compatible = flux2_klein_models(models)
+    if model_key:
+        main = next((model for model in compatible if model.get("key") == model_key), None)
+        if main is None:
+            raise RuntimeError("The selected FLUX.2 Klein model is not installed.")
+    else:
+        main = compatible[0] if compatible else None
     if main is None:
         raise RuntimeError("No FLUX.2 Klein main model is installed.")
 
@@ -834,8 +873,8 @@ def build_prompt(prompt, images, connections=None):
     return "\n".join(lines)
 
 
-def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None, preview_size=None):
-    main_model, qwen_model, vae_model = choose_models()
+def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None, preview_size=None, model_key=None):
+    main_model, qwen_model, vae_model = choose_models(model_key)
     source_image = next((image for image in images if image), None)
     width, height = dimensions_for(aspect, source_image, preview_size)
     prompt_text = build_prompt(prompt, images, connections)
@@ -1115,7 +1154,7 @@ def ensure_generation_queue_idle():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "InvokeSimpleMode/1.0"
+    server_version = "InvokeSimpleMode/1.2.1"
 
     def log_message(self, fmt, *args):
         return
@@ -1170,6 +1209,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/status":
                 version = invoke_json("/api/v1/app/version", timeout=3)
                 self.send_json({"ok": True, "invoke": version})
+            elif path == "/api/models":
+                self.send_json(image_model_catalog())
             elif path == "/api/native/features":
                 self.send_json(native_feature_catalog())
             elif path == "/api/native/gallery":
@@ -1441,6 +1482,7 @@ class Handler(BaseHTTPRequestHandler):
             mode = "pro"
         aspect = payload.get("aspect") or "original"
         preview_size = max(0, min(512, int(payload.get("preview_size") or 0)))
+        model_key = str(payload.get("model_key") or "").strip() or None
         base_seed = payload.get("seed")
         mask_image_name = Path(payload.get("mask_image_name") or "").name or None
         if base_seed in (None, "", 0, "0"):
@@ -1451,7 +1493,10 @@ class Handler(BaseHTTPRequestHandler):
         item_ids = []
         for index in range(count):
             seed = (base_seed + index * 9973) % 4294967295
-            graph = build_graph(images, prompt, aspect, steps, seed, connections, mode, mask_image_name, preview_size)
+            graph = build_graph(
+                images, prompt, aspect, steps, seed, connections, mode, mask_image_name, preview_size,
+                model_key=model_key,
+            )
             body = {
                 "batch": {
                     "batch_id": f"simple-mode-{random.randint(100000, 999999)}-{index}",

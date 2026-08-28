@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 - 2026-08-28
+
+- Replaced raw queue-state text such as `in_progress` with a small human-readable `Rendering` label.
+- Added a compact model selector that opens on hover or click and lists compatible installed FLUX.2 Klein models.
+- Persisted the selected model per workspace and passed it into every image, specialized-node, and Focus Edit graph.
+- Matched FLUX.2 Klein 9B and 4B automatically with their corresponding installed Qwen3 encoders.
+- Kept generation serial so selecting another model does not run two image models at the same time.
+
 ## 1.2.0 - 2026-08-28
 
 - Replaced native Windows select popups with compact neutral dropdown menus across Simple Mode.

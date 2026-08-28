@@ -29,6 +29,7 @@ const state = {
   nativeCatalog: null,
   nativeCatalogLoading: false,
   videoStatus: null,
+  modelKey: '',
   renderAfterPointer: false,
   blockTokenDrag: null,
   globalTokenDrag: null,
@@ -69,6 +70,7 @@ const workspaceName = document.getElementById('workspaceName');
 const newWorkspaceButton = document.getElementById('newWorkspace');
 const saveStatus = document.getElementById('saveStatus');
 const deleteSelectedButton = document.getElementById('deleteSelected');
+const modelSelect = document.getElementById('modelSelect');
 const defaultPromptText = promptEditor.innerText.replace(/\u00a0/g, ' ').trim();
 
 const roles = ['style', 'brand', 'object', 'lighting', 'composition', 'extra'];
@@ -103,13 +105,32 @@ function truncateText(value, limit = 130) {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
 
+function displayQueueStatus(value) {
+  const status = String(value || 'queued').trim().toLowerCase();
+  if (['in_progress', 'running', 'processing'].includes(status)) return 'Rendering';
+  if (['pending', 'waiting', 'queued'].includes(status)) return 'Queued';
+  if (status === 'completed') return 'Ready';
+  if (status === 'canceled') return 'Canceled';
+  if (status === 'failed') return 'Failed';
+  return status.replace(/[_-]+/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
+}
+
 let openModernSelect = null;
+
+function setModernSelectOpen(wrapper, shouldOpen, focusSelected = false) {
+  if (!wrapper) return;
+  const trigger = wrapper.querySelector('.modern-select-trigger');
+  const menu = wrapper.querySelector('.modern-select-menu');
+  if (shouldOpen) closeModernSelect(wrapper);
+  wrapper.classList.toggle('open', shouldOpen);
+  trigger?.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+  openModernSelect = shouldOpen ? wrapper : (openModernSelect === wrapper ? null : openModernSelect);
+  if (shouldOpen && focusSelected) menu?.querySelector('.selected:not(:disabled)')?.focus({ preventScroll: true });
+}
 
 function closeModernSelect(except = null) {
   if (!openModernSelect || openModernSelect === except) return;
-  openModernSelect.classList.remove('open');
-  openModernSelect.querySelector('.modern-select-trigger')?.setAttribute('aria-expanded', 'false');
-  openModernSelect = null;
+  setModernSelectOpen(openModernSelect, false);
 }
 
 function syncModernSelect(select) {
@@ -155,15 +176,28 @@ function enhanceSelect(select) {
   trigger.setAttribute('aria-controls', menuId);
   wrapper.append(trigger, menu);
 
+  if (select.id === 'modelSelect') {
+    wrapper.classList.add('model-picker-select');
+    let hoverTimer = null;
+    wrapper.addEventListener('mouseenter', () => {
+      window.clearTimeout(hoverTimer);
+      hoverTimer = window.setTimeout(() => {
+        if (!select.disabled) setModernSelectOpen(wrapper, true);
+      }, 140);
+    });
+    wrapper.addEventListener('mouseleave', () => {
+      window.clearTimeout(hoverTimer);
+      hoverTimer = window.setTimeout(() => {
+        if (!wrapper.contains(document.activeElement)) setModernSelectOpen(wrapper, false);
+      }, 220);
+    });
+  }
+
   trigger.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
     const willOpen = !wrapper.classList.contains('open');
-    closeModernSelect(wrapper);
-    wrapper.classList.toggle('open', willOpen);
-    trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-    openModernSelect = willOpen ? wrapper : null;
-    if (willOpen) menu.querySelector('.selected:not(:disabled)')?.focus({ preventScroll: true });
+    setModernSelectOpen(wrapper, willOpen, willOpen);
   });
   trigger.addEventListener('keydown', (event) => {
     if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
@@ -179,9 +213,7 @@ function enhanceSelect(select) {
     select.dispatchEvent(new Event('input', { bubbles: true }));
     select.dispatchEvent(new Event('change', { bubbles: true }));
     syncModernSelect(select);
-    wrapper.classList.remove('open');
-    trigger.setAttribute('aria-expanded', 'false');
-    openModernSelect = null;
+    setModernSelectOpen(wrapper, false);
     trigger.focus({ preventScroll: true });
   });
   menu.addEventListener('keydown', (event) => {
@@ -189,9 +221,7 @@ function enhanceSelect(select) {
     const current = options.indexOf(document.activeElement);
     if (event.key === 'Escape') {
       event.preventDefault();
-      wrapper.classList.remove('open');
-      trigger.setAttribute('aria-expanded', 'false');
-      openModernSelect = null;
+      setModernSelectOpen(wrapper, false);
       trigger.focus({ preventScroll: true });
       return;
     }
@@ -255,6 +285,7 @@ function workspaceSnapshot() {
       mode: document.getElementById('mode').value,
       steps: document.getElementById('steps').value,
       count: document.getElementById('count').value,
+      model: state.modelKey || modelSelect.value,
     },
   };
 }
@@ -308,6 +339,18 @@ function restoreControlValue(id, value) {
   if (option) control.value = option.value;
 }
 
+function setSelectedModel(modelKey) {
+  const value = String(modelKey || '');
+  const option = [...modelSelect.options].find((item) => item.value === value);
+  if (option) {
+    state.modelKey = option.value;
+    modelSelect.value = option.value;
+  } else if (value && modelSelect.disabled) {
+    state.modelKey = value;
+  }
+  syncModernSelect(modelSelect);
+}
+
 function applyWorkspaceDocument(document) {
   state.suspendAutosave = true;
   resetRuntimeState();
@@ -356,6 +399,7 @@ function applyWorkspaceDocument(document) {
   restoreControlValue('mode', saved.controls?.mode);
   restoreControlValue('steps', saved.controls?.steps);
   restoreControlValue('count', saved.controls?.count);
+  setSelectedModel(saved.controls?.model);
   refreshSlotPreviews();
   renderTokens();
   restoreResultCards();
@@ -1827,11 +1871,14 @@ function renderOutputNode(output) {
     `;
   } else {
     const failed = output.status === 'failed' || output.status === 'canceled';
+    const statusLabel = displayQueueStatus(output.status);
     element.innerHTML = `
       <button class="canvas-item-delete" data-delete-endpoint="${endpoint}" type="button" title="Delete output">×</button>
       <div class="node-head">
         <span>${label}</span>
-        ${failed ? '<span class="output-failed">Failed</span>' : '<span class="output-head-progress" aria-label="Rendering"></span>'}
+        ${failed
+          ? `<span class="output-failed">${escapeHtml(statusLabel)}</span>`
+          : `<span class="output-status"><i aria-hidden="true"></i>${escapeHtml(statusLabel)}</span>`}
       </div>
       <div class="node-body">
         ${failed
@@ -2520,7 +2567,7 @@ function restoreResultCards() {
       `;
     } else if (output.status === 'failed' || output.status === 'canceled') {
       card.classList.remove('loading');
-      card.innerHTML = `<span>${escapeHtml(output.status)}<br><small>Generation did not complete.</small></span>`;
+      card.innerHTML = `<span>${escapeHtml(displayQueueStatus(output.status))}<br><small>Generation did not complete.</small></span>`;
     } else {
       card.innerHTML = '<div class="result-placeholder" aria-label="Rendering"><span></span><em>Rendering</em></div>';
       if (/^\d+$/.test(String(output.itemId))) window.setTimeout(() => pollItem(output.itemId), 250);
@@ -2602,6 +2649,7 @@ async function submitGeneration({ prompt, images, sourceEndpoint = null, connect
       mode: document.getElementById('mode').value,
       steps: Number(document.getElementById('steps').value),
       count: Number(document.getElementById('count').value),
+      model_key: state.modelKey || modelSelect.value,
       ...extraPayload,
     };
     const response = await fetch('/api/generate', {
@@ -3282,7 +3330,7 @@ function renderFocusVariants() {
       return `
         <div class="focus-variant loading" data-focus-variant-id="${escapeHtml(id)}">
           <div class="result-placeholder"><span></span></div>
-          <small>${escapeHtml(status)}</small>
+          <small>${escapeHtml(displayQueueStatus(status))}</small>
         </div>
       `;
     }
@@ -4314,6 +4362,29 @@ async function checkStatus() {
   serverStatus.classList.remove('ready');
 }
 
+async function loadImageModels() {
+  try {
+    const response = await fetch('/api/models');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Image models could not be loaded.');
+    const models = Array.isArray(data.models) ? data.models : [];
+    if (!models.length) throw new Error('No compatible FLUX.2 Klein model is installed.');
+    modelSelect.innerHTML = models.map((model) => (
+      `<option value="${escapeHtml(model.key)}">${escapeHtml(model.label || model.name)}</option>`
+    )).join('');
+    const desired = state.modelKey || data.default_key || models[0].key;
+    state.modelKey = models.some((model) => model.key === desired) ? desired : models[0].key;
+    modelSelect.value = state.modelKey;
+    modelSelect.disabled = false;
+    syncModernSelect(modelSelect);
+  } catch (error) {
+    modelSelect.innerHTML = '<option value="">Model unavailable</option>';
+    modelSelect.disabled = true;
+    syncModernSelect(modelSelect);
+    setUploadStatus(error.message, 'error');
+  }
+}
+
 document.addEventListener('selectionchange', savePromptRange);
 promptEditor.addEventListener('keyup', savePromptRange);
 promptEditor.addEventListener('mouseup', savePromptRange);
@@ -4359,6 +4430,12 @@ document.getElementById('mode').addEventListener('change', () => {
 });
 document.getElementById('aspect').addEventListener('change', scheduleAutosave);
 document.getElementById('steps').addEventListener('change', scheduleAutosave);
+modelSelect.addEventListener('change', () => {
+  state.modelKey = modelSelect.value;
+  scheduleAutosave();
+  const label = modelSelect.options[modelSelect.selectedIndex]?.textContent || 'Selected model';
+  setUploadStatus(`${label} selected. Jobs remain sequential.`);
+});
 document.getElementById('zoomOut').addEventListener('click', () => setZoom(state.view.scale * 0.9));
 document.getElementById('zoomIn').addEventListener('click', () => setZoom(state.view.scale * 1.1));
 document.getElementById('resetView').addEventListener('click', resetView);
@@ -4461,6 +4538,7 @@ updateOutputMode();
 syncModeControls();
 enhanceSelects();
 checkStatus();
+loadImageModels();
 loadNativeCatalog();
 refreshVideoStatus({ render: true });
 initializeWorkspaces();

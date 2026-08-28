@@ -1,20 +1,14 @@
-# InvokeAI Simple Mode v1.2.0
+# InvokeAI Simple Mode v1.2.1
 
-This release gives Variate, New view, and Extract their own compact node interfaces instead of reusing the generic Modify prompt layout.
+This patch replaces raw queue text such as `in_progress` with a compact `Rendering` status and a restrained animated indicator.
 
-Each specialized node now provides useful starting choices that are compiled into the real InvokeAI prompt. Variate controls form or color, direction, preset, and change strength. New view controls camera direction and elevation. Extract controls color, material, or parts plus sampling detail.
+The gray model line beneath Canvas is now a designed selector that opens on hover or click. It discovers compatible FLUX.2 Klein models already installed in InvokeAI, currently supports both 9B and 4B, and automatically pairs each model with its matching Qwen3 encoder.
 
-The default 360p preview option submits a real low-resolution, four-step FLUX graph for fast exploration. Full quality remains available inside each node and uses the shared quality controls. Every selection is stored in the workspace and restored after reload.
-
-Native browser dropdowns have been replaced with a neutral compact menu matching the node system, including keyboard navigation and accessible state. New nodes now open fully inside the visible canvas, and saved output counts stay synchronized with the Generate button.
-
-Video nodes now run InvokeAI 6.14.0's Wan 2.2 pipeline for text-to-video or image-to-video work. Results return as playable MP4 nodes and can be focused or downloaded. Optional Wan model components can be installed from the Video node and share the serial queue with FLUX image jobs.
-
-Double-clicking an image now opens a working Focus Edit view. Direct edit revises the whole image, while Inpaint limits the edit to the brushed mask. Generated variants appear beneath the focused image; selecting one and returning to the canvas replaces the original while preserving its position and connections.
+The selection is saved per workspace and is passed into normal generation, specialized nodes, and Focus Edit. Jobs still use InvokeAI's serial queue, so switching models does not run 9B and 4B simultaneously.
 
 ## Important
 
-- Windows 10/11 only for v1.2.0.
+- Windows 10/11 only for v1.2.1.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.

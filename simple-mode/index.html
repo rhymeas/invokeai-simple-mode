@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>InvokeAI Simple Mode</title>
     <link rel="icon" href="/icon-source" />
-    <link rel="stylesheet" href="/styles.css?v=node-profiles-1.2.0" />
+    <link rel="stylesheet" href="/styles.css?v=model-selector-1.2.1" />
   </head>
   <body>
     <main class="app-shell">
@@ -52,7 +52,12 @@
           <div class="canvas-title">
             <div>
               <span>Canvas</span>
-              <small id="modelHint">FLUX.2 Klein 9B, queued sequentially</small>
+              <div class="canvas-model-line">
+                <select id="modelSelect" aria-label="Image model" disabled>
+                  <option value="">Loading models</option>
+                </select>
+                <small class="model-queue-note">Sequential queue</small>
+              </div>
             </div>
             <div class="canvas-tools">
               <button id="zoomOut" type="button" title="Zoom out">-</button>
@@ -156,6 +161,6 @@
       </section>
     </main>
 
-    <script src="/app.js?v=node-profiles-1.2.0"></script>
+    <script src="/app.js?v=model-selector-1.2.1"></script>
   </body>
 </html>

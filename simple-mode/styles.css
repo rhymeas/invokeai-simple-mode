@@ -599,6 +599,15 @@ textarea {
   gap: 3px;
 }
 
+.canvas-model-line {
+  min-width: 0;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: visible;
+}
+
 .results-title {
   grid-template-columns: 1fr auto;
 }
@@ -2052,6 +2061,26 @@ h1 {
   animation: output-pulse 1.2s ease-in-out infinite;
 }
 
+.output-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #a7a7ae !important;
+  font-size: 9px !important;
+  font-weight: 500 !important;
+  line-height: 1;
+}
+
+.output-status > i {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: #7774ff;
+  box-shadow: 0 0 0 3px rgba(119, 116, 255, 0.13);
+  animation: output-pulse 1.2s ease-in-out infinite;
+}
+
 .output-failed {
   color: #d1a6a6 !important;
 }
@@ -2845,6 +2874,51 @@ textarea {
   height: 34px;
 }
 
+.canvas-model-line > .modern-select {
+  width: min(205px, 46vw);
+  height: 20px;
+}
+
+.canvas-model-line .modern-select-trigger {
+  padding: 0 3px !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: #9f9fa6 !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+}
+
+.canvas-model-line .modern-select-trigger:hover,
+.canvas-model-line .modern-select.open .modern-select-trigger {
+  border-color: #3d3d42 !important;
+  background: #252528 !important;
+  color: #dedee1 !important;
+}
+
+.canvas-model-line .modern-select-trigger > i {
+  width: 5px;
+  height: 5px;
+  border-color: #85858c;
+}
+
+.canvas-model-line .modern-select-menu {
+  width: max(100%, 205px);
+  top: calc(100% + 4px);
+}
+
+.canvas-model-line .modern-select-option {
+  min-height: 28px;
+  font-size: 10px;
+}
+
+.canvas-model-line .model-queue-note {
+  color: #707077;
+  font-size: 9px;
+  font-weight: 450;
+  white-space: nowrap;
+}
+
 .ref-meta .modern-select,
 .field .modern-select {
   height: 38px;
@@ -3364,6 +3438,17 @@ textarea {
   background: #202023;
   font-size: 11px;
   font-weight: 650;
+}
+
+.canvas-output-node .node-head > span:last-child {
+  font-size: 9px;
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  .canvas-model-line .model-queue-note {
+    display: none;
+  }
 }
 
 .canvas-node .node-body,
