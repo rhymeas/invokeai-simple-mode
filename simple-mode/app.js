@@ -3875,10 +3875,9 @@ function renderFocusLayers() {
         <button class="focus-layer-select" data-focus-layer-id="${escapeHtml(layer.id)}" type="button" aria-pressed="${active ? 'true' : 'false'}"${visible && !state.focusBusy ? '' : ' disabled'}>
           <span class="focus-layer-thumb"><img src="${imageUrl(layer.media, 'full')}" alt=""></span>
           <span class="focus-layer-copy"><strong>${escapeHtml(layer.label)}</strong><small>${kindLabel}</small></span>
-          <span class="focus-layer-state" aria-hidden="true"></span>
         </button>
+        <button class="focus-layer-visibility${visible ? '' : ' is-hidden'}" data-focus-layer-visibility="${escapeHtml(layer.id)}" type="button" title="${visible ? 'Hide layer' : 'Show layer'}" aria-label="${visible ? 'Hide' : 'Show'} ${escapeHtml(layer.label)}"${protectedLayer || state.focusBusy ? ' disabled' : ''}><span class="focus-eye-icon" aria-hidden="true"></span></button>
         <span class="focus-layer-tools">
-          <button class="focus-layer-tool visibility${visible ? '' : ' is-hidden'}" data-focus-layer-visibility="${escapeHtml(layer.id)}" type="button" title="${visible ? 'Hide layer' : 'Show layer'}" aria-label="${visible ? 'Hide' : 'Show'} ${escapeHtml(layer.label)}"${protectedLayer || state.focusBusy ? ' disabled' : ''}><span class="focus-eye-icon" aria-hidden="true"></span></button>
           <button class="focus-layer-tool" data-focus-layer-move="up" data-focus-layer-target="${escapeHtml(layer.id)}" type="button" title="Move layer up" aria-label="Move ${escapeHtml(layer.label)} up"${canMoveUp && !state.focusBusy ? '' : ' disabled'}>↑</button>
           <button class="focus-layer-tool" data-focus-layer-move="down" data-focus-layer-target="${escapeHtml(layer.id)}" type="button" title="Move layer down" aria-label="Move ${escapeHtml(layer.label)} down"${canMoveDown && !state.focusBusy ? '' : ' disabled'}>↓</button>
           <button class="focus-layer-tool delete" data-focus-layer-delete="${escapeHtml(layer.id)}" type="button" title="Delete layer" aria-label="Delete ${escapeHtml(layer.label)}"${protectedLayer || state.focusBusy ? ' disabled' : ''}>×</button>

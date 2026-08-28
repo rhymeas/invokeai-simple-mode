@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1 - 2026-08-28
+
+- Moved Focus Edit layer visibility controls beside each layer and made eye toggles switch the canvas immediately in both directions.
+- Removed the stale layer status dot and kept layer reorder/delete controls separate from the direct visibility action.
+- Preserved complete image previews in canvas, node, output, token, variant, and Focus layer surfaces.
+
 ## 1.6.0 - 2026-08-28
 
 - Fixed Focus Edit layer eye controls so showing or hiding a layer immediately updates the displayed image without selecting the row first.

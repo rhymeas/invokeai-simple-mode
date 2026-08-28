@@ -2383,10 +2383,10 @@ h1 {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 7px;
+  grid-template-columns: 48px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  padding: 6px;
+  padding: 6px 38px 6px 6px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -2402,7 +2402,7 @@ h1 {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   max-height: 30px;
   padding: 0 5px;
@@ -2450,6 +2450,38 @@ h1 {
   cursor: default;
 }
 
+.focus-layer-visibility {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #aeb0b8;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.focus-layer-visibility:hover:not(:disabled),
+.focus-layer-visibility:focus-visible:not(:disabled) {
+  background: #38383d;
+  color: #fff;
+}
+
+.focus-layer-visibility.is-hidden {
+  color: #6d6e76;
+}
+
+.focus-layer-visibility:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
 .focus-eye-icon {
   position: relative;
   width: 12px;
@@ -2472,7 +2504,7 @@ h1 {
   transform: translate(-50%, -50%);
 }
 
-.focus-layer-tool.visibility.is-hidden .focus-eye-icon::after {
+.focus-layer-visibility.is-hidden .focus-eye-icon::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -2522,17 +2554,6 @@ h1 {
 .focus-layer-copy small {
   color: #8f8f95;
   font-size: 8px;
-}
-
-.focus-layer-state {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #4b4b50;
-}
-
-.focus-layer.active .focus-layer-state {
-  background: #8d89ff;
 }
 
 .focus-stage {
