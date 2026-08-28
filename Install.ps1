@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$SupportedInvokeVersion = "6.13.8"
+$SupportedInvokeVersion = "6.14.0"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $InvokeRoot = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($InvokeRoot))
 $PythonExe = Join-Path $InvokeRoot ".venv\Scripts\python.exe"
@@ -86,7 +86,7 @@ if (-not $NoShortcuts) {
     }
 }
 
-Write-Host "InvokeAI Simple Mode v1.0.0 installed." -ForegroundColor Green
+Write-Host "InvokeAI Simple Mode v1.1.0 installed." -ForegroundColor Green
 Write-Host "InvokeAI: $InvokeVersion"
 Write-Host "Launcher: $LauncherExe"
 Write-Host "Your existing models, outputs, databases, and Simple Mode workspaces were not modified."

@@ -105,6 +105,12 @@ NATIVE_DIRECT_EXCLUDES = {
     "use_cache",
 }
 
+WAN_TI2V_SOURCES = (
+    "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/Wan2.2-TI2V-5B-Q4_K_M.gguf",
+    "Wan-AI/Wan2.2-TI2V-5B-Diffusers::vae/diffusion_pytorch_model.safetensors",
+    "Wan-AI/Wan2.2-T2V-A14B-Diffusers::text_encoder+tokenizer",
+)
+
 
 def utc_now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -604,7 +610,17 @@ def normalize_image_payload(payload):
     return payload
 
 
-def upload_image_bytes(file_bytes, filename, content_type="image/png"):
+def normalize_video_payload(payload):
+    video_name = payload.get("video_name")
+    if video_name:
+        safe_name = quote(video_name)
+        payload["media_type"] = "video"
+        payload["video_url"] = f"{INVOKE_URL}/api/v1/videos/i/{safe_name}/full"
+        payload["thumbnail_url"] = f"{INVOKE_URL}/api/v1/videos/i/{safe_name}/thumbnail"
+    return payload
+
+
+def upload_image_bytes(file_bytes, filename, content_type="image/png", is_intermediate=False):
     filename = Path(filename or "image.png").name.replace('"', "")
     boundary = f"----InvokeSimpleModeBoundary{random.randint(100000, 999999)}"
     body = []
@@ -614,7 +630,7 @@ def upload_image_bytes(file_bytes, filename, content_type="image/png"):
     body.append(file_bytes)
     body.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
     status, response, _ = invoke_raw(
-        "/api/v1/images/upload?image_category=user&is_intermediate=false",
+        f"/api/v1/images/upload?image_category=user&is_intermediate={'true' if is_intermediate else 'false'}",
         method="POST",
         body=b"".join(body),
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
@@ -654,6 +670,109 @@ def choose_models():
         raise RuntimeError("No FLUX.2 VAE is installed.")
 
     return main, qwen, vae
+
+
+def choose_wan_models(required=True):
+    models = invoke_json("/api/v2/models/?with_config=true", timeout=15).get("models") or []
+    mains = [
+        model for model in models
+        if model.get("base") == "wan" and model.get("type") == "main" and model.get("variant") == "ti2v_5b"
+    ]
+    main = next((model for model in mains if "Q4_K_M" in str(model.get("name") or "")), None)
+    main = main or next((model for model in mains if "Q8_0" in str(model.get("name") or "")), None)
+    main = main or (mains[0] if mains else None)
+    vae = next(
+        (
+            model for model in models
+            if model.get("base") == "wan"
+            and model.get("type") == "vae"
+            and "TI2V-5B" in str(model.get("name") or "")
+        ),
+        None,
+    )
+    vae = vae or next(
+        (model for model in models if model.get("base") == "wan" and model.get("type") == "vae"),
+        None,
+    )
+    t5 = next((model for model in models if model.get("type") == "wan_t5_encoder"), None)
+    if required and not all((main, vae, t5)):
+        missing = []
+        if not main:
+            missing.append("Wan 2.2 TI2V-5B Q4")
+        if not vae:
+            missing.append("Wan TI2V VAE")
+        if not t5:
+            missing.append("Wan T5 encoder")
+        raise RuntimeError(f"Video setup is incomplete: {', '.join(missing)}. Use Set up video in the Video node first.")
+    return main, vae, t5
+
+
+def install_source_id(source):
+    if not isinstance(source, dict):
+        return str(source or "")
+    if source.get("url"):
+        return str(source["url"])
+    repo_id = str(source.get("repo_id") or "")
+    subfolder = str(source.get("subfolder") or "").replace("\\", "/")
+    return f"{repo_id}::{subfolder}" if subfolder else repo_id
+
+
+def video_status():
+    main, vae, t5 = choose_wan_models(required=False)
+    jobs = invoke_json("/api/v2/models/install", timeout=15) or []
+    relevant_jobs = [
+        {
+            "id": job.get("id"),
+            "source": install_source_id(job.get("source")),
+            "status": job.get("status"),
+            "bytes": job.get("bytes") or 0,
+            "total_bytes": job.get("total_bytes") or 0,
+            "error": job.get("error"),
+        }
+        for job in jobs
+        if "Wan2.2" in json.dumps(job.get("source") or {}, ensure_ascii=False)
+    ]
+    return {
+        "supported": True,
+        "ready": all((main, vae, t5)),
+        "model": main and {"key": main.get("key"), "name": main.get("name")},
+        "components": {
+            "transformer": bool(main),
+            "vae": bool(vae),
+            "text_encoder": bool(t5),
+        },
+        "jobs": relevant_jobs,
+        "profile": "Wan 2.2 TI2V-5B Q4, serial queue",
+    }
+
+
+def install_wan_models():
+    status = video_status()
+    if status["ready"]:
+        return status
+    active_sources = {
+        str(job.get("source") or "")
+        for job in status.get("jobs") or []
+        if job.get("status") in {"waiting", "downloading", "running", "paused"}
+    }
+    created = []
+    for source in WAN_TI2V_SOURCES:
+        if any(source in active_source for active_source in active_sources):
+            continue
+        try:
+            job = invoke_json(
+                f"/api/v2/models/install?source={quote(source, safe='')}&inplace=false",
+                method="POST",
+                payload={},
+                timeout=60,
+            )
+            created.append(job)
+        except urllib.error.HTTPError as error:
+            if error.code != 409:
+                raise
+    result = video_status()
+    result["created_jobs"] = [job.get("id") for job in created if isinstance(job, dict)]
+    return result
 
 
 def clamp_dimension(value):
@@ -708,7 +827,7 @@ def build_prompt(prompt, images, connections=None):
     return "\n".join(lines)
 
 
-def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro"):
+def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None):
     main_model, qwen_model, vae_model = choose_models()
     source_image = next((image for image in images if image), None)
     width, height = dimensions_for(aspect, source_image)
@@ -815,24 +934,130 @@ def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro
         edges.insert(5, {"source": {"node_id": "prep", "field": "image"}, "destination": {"node_id": "kontext", "field": "image"}})
         edges.insert(6, {"source": {"node_id": "kontext", "field": "kontext_cond"}, "destination": {"node_id": "denoise", "field": "kontext_conditioning"}})
 
+    if mask_image_name and source_image and source_image.get("image_name"):
+        nodes["init_latents"] = {
+            "id": "init_latents",
+            "is_intermediate": True,
+            "use_cache": False,
+            "image": {"image_name": source_image["image_name"]},
+            "vae": None,
+            "type": "flux2_vae_encode",
+        }
+        nodes["denoise_mask"] = {
+            "id": "denoise_mask",
+            "is_intermediate": True,
+            "use_cache": False,
+            "vae": None,
+            "image": None,
+            "mask": {"image_name": Path(mask_image_name).name},
+            "tiled": False,
+            "fp32": False,
+            "type": "create_denoise_mask",
+        }
+        edges.extend([
+            {"source": {"node_id": "loader", "field": "vae"}, "destination": {"node_id": "init_latents", "field": "vae"}},
+            {"source": {"node_id": "init_latents", "field": "latents"}, "destination": {"node_id": "denoise", "field": "latents"}},
+            {"source": {"node_id": "loader", "field": "vae"}, "destination": {"node_id": "denoise_mask", "field": "vae"}},
+            {"source": {"node_id": "denoise_mask", "field": "denoise_mask"}, "destination": {"node_id": "denoise", "field": "denoise_mask"}},
+        ])
+
     return {"id": "simple_mode_generate", "nodes": nodes, "edges": edges}
 
 
-def find_image_result(item):
+def video_dimensions(source_image, resolution):
+    target = 720 if resolution == "720p" else 480
+    width = int((source_image or {}).get("width") or 832)
+    height = int((source_image or {}).get("height") or 480)
+    scale = target / max(1, min(width, height))
+    width = max(32, int(round(width * scale / 32)) * 32)
+    height = max(32, int(round(height * scale / 32)) * 32)
+    return min(width, 1280), min(height, 1280)
+
+
+def build_video_graph(prompt, source_image=None, resolution="480p", frames=49, fps=16, steps=20, seed=0):
+    main, vae, t5 = choose_wan_models()
+    width, height = video_dimensions(source_image, resolution)
+    frames = max(5, min(81, int(frames)))
+    frames = 1 + 4 * max(1, round((frames - 1) / 4))
+    nodes = {
+        "loader": {
+            "id": "loader", "type": "wan_model_loader", "is_intermediate": True, "use_cache": False,
+            "model": model_field(main), "transformer_low_noise_model": None,
+            "vae_model": model_field(vae), "wan_t5_encoder_model": model_field(t5), "component_source": None,
+        },
+        "positive": {
+            "id": "positive", "type": "wan_text_encoder", "is_intermediate": True, "use_cache": True,
+            "prompt": prompt.strip(), "wan_t5_encoder": None,
+        },
+        "negative": {
+            "id": "negative", "type": "wan_text_encoder", "is_intermediate": True, "use_cache": True,
+            "prompt": "low quality, flicker, unstable geometry, warped anatomy, text artifacts", "wan_t5_encoder": None,
+        },
+        "denoise": {
+            "id": "denoise", "type": "wan_video_denoise", "is_intermediate": True, "use_cache": False,
+            "transformer": None, "positive_conditioning": None, "negative_conditioning": None, "ref_image": None,
+            "guidance_scale": 1.0 if source_image else 5.0,
+            "guidance_scale_low_noise": 1.0 if source_image else 4.0,
+            "width": width, "height": height, "num_frames": frames,
+            "steps": max(4, min(40, int(steps))), "seed": int(seed),
+        },
+        "video": {
+            "id": "video", "type": "wan_l2v", "is_intermediate": False, "use_cache": False,
+            "board": None, "metadata": None, "latents": None, "vae": None, "fps": max(1, min(60, int(fps))),
+        },
+    }
+    edges = [
+        {"source": {"node_id": "loader", "field": "transformer"}, "destination": {"node_id": "denoise", "field": "transformer"}},
+        {"source": {"node_id": "loader", "field": "wan_t5_encoder"}, "destination": {"node_id": "positive", "field": "wan_t5_encoder"}},
+        {"source": {"node_id": "loader", "field": "wan_t5_encoder"}, "destination": {"node_id": "negative", "field": "wan_t5_encoder"}},
+        {"source": {"node_id": "positive", "field": "conditioning"}, "destination": {"node_id": "denoise", "field": "positive_conditioning"}},
+        {"source": {"node_id": "negative", "field": "conditioning"}, "destination": {"node_id": "denoise", "field": "negative_conditioning"}},
+        {"source": {"node_id": "denoise", "field": "latents"}, "destination": {"node_id": "video", "field": "latents"}},
+        {"source": {"node_id": "loader", "field": "vae"}, "destination": {"node_id": "video", "field": "vae"}},
+    ]
+    if source_image and source_image.get("image_name"):
+        nodes["reference"] = {
+            "id": "reference", "type": "wan_ref_image_encoder", "is_intermediate": True, "use_cache": False,
+            "image": {"image_name": source_image["image_name"]},
+            "end_image": None,
+            "vae": None, "width": width, "height": height, "num_frames": 1,
+        }
+        edges.extend([
+            {"source": {"node_id": "loader", "field": "vae"}, "destination": {"node_id": "reference", "field": "vae"}},
+            {"source": {"node_id": "reference", "field": "ref_image"}, "destination": {"node_id": "denoise", "field": "ref_image"}},
+        ])
+    return {"id": "simple_mode_video", "nodes": nodes, "edges": edges}
+
+
+def find_media_result(item):
     session = item.get("session") or {}
     results = session.get("results") or {}
-    final_name = None
+    final_image = None
+    final_video = None
     for value in results.values():
         image = value.get("image") if isinstance(value, dict) else None
         if isinstance(image, dict) and image.get("image_name"):
-            final_name = image["image_name"]
-    if final_name:
-        return {
-            "image_name": final_name,
-            "image_url": f"{INVOKE_URL}/api/v1/images/i/{final_name}/full",
-            "thumbnail_url": f"{INVOKE_URL}/api/v1/images/i/{final_name}/thumbnail",
-        }
+            final_image = normalize_image_payload({**image, "media_type": "image"})
+        video = value.get("video") if isinstance(value, dict) else None
+        if isinstance(video, dict) and video.get("video_name"):
+            final_video = normalize_video_payload({
+                **video,
+                "width": value.get("width"),
+                "height": value.get("height"),
+                "num_frames": value.get("num_frames"),
+                "fps": value.get("fps"),
+                "duration": value.get("duration"),
+            })
+    if final_video:
+        return final_video
+    if final_image:
+        return final_image
     return None
+
+
+def find_image_result(item):
+    media = find_media_result(item)
+    return media if media and media.get("image_name") else None
 
 
 def choose_image_to_prompt_model():
@@ -947,6 +1172,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(native_boards())
             elif path == "/api/native/queue":
                 self.send_json(native_queue_action("refresh"))
+            elif path == "/api/video/status":
+                self.send_json(video_status())
             elif path == "/api/workspaces":
                 self.send_json({"items": list_workspaces()})
             elif path.startswith("/api/workspaces/"):
@@ -955,16 +1182,23 @@ class Handler(BaseHTTPRequestHandler):
             elif path.startswith("/api/item/"):
                 item_id = path.rsplit("/", 1)[-1]
                 item = invoke_json(f"/api/v1/queue/default/i/{item_id}", timeout=15)
+                media = find_media_result(item)
                 self.send_json({
                     "item_id": int(item_id),
                     "status": item.get("status"),
                     "error": item.get("error") or item.get("error_traceback"),
-                    "image": find_image_result(item),
+                    "media": media,
+                    "image": media if media and media.get("image_name") else None,
+                    "video": media if media and media.get("video_name") else None,
                 })
             elif path.startswith("/api/download/"):
                 image_name = Path(path.rsplit("/", 1)[-1]).name
                 _, data, content_type = invoke_raw(f"/api/v1/images/i/{quote(image_name)}/full", timeout=30)
                 self.send_bytes(data, content_type, filename=image_name)
+            elif path.startswith("/api/download-video/"):
+                video_name = Path(path.rsplit("/", 1)[-1]).name
+                _, data, content_type = invoke_raw(f"/api/v1/videos/i/{quote(video_name)}/full", timeout=120)
+                self.send_bytes(data, content_type, filename=video_name)
             else:
                 self.send_json({"error": "Not found"}, status=404)
         except Exception as exc:
@@ -981,9 +1215,14 @@ class Handler(BaseHTTPRequestHandler):
                 workspace_id = parsed.path.split("/")[-2]
                 self.send_json(write_workspace(workspace_id, self.read_json()))
             elif parsed.path == "/api/upload":
-                self.handle_upload()
+                query = parse_qs(parsed.query)
+                self.handle_upload(is_intermediate=(query.get("is_intermediate") or ["false"])[0].lower() == "true")
             elif parsed.path == "/api/generate":
                 self.handle_generate()
+            elif parsed.path == "/api/video/generate":
+                self.handle_video_generate()
+            elif parsed.path == "/api/video/install":
+                self.send_json(install_wan_models(), status=202)
             elif parsed.path == "/api/upscale":
                 self.handle_upscale()
             elif parsed.path == "/api/native/run":
@@ -1013,7 +1252,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.send_json({"error": str(exc)}, status=500)
 
-    def handle_upload(self):
+    def handle_upload(self, is_intermediate=False):
         form = cgi.FieldStorage(
             fp=self.rfile,
             headers=self.headers,
@@ -1035,7 +1274,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         filename = Path(field.filename or "upload.png").name.replace('"', "")
         content_type = field.type or "image/png"
-        status, payload = upload_image_bytes(file_bytes, filename, content_type)
+        status, payload = upload_image_bytes(file_bytes, filename, content_type, is_intermediate=is_intermediate)
         self.send_json(payload, status=status)
 
     def handle_upscale(self):
@@ -1195,6 +1434,7 @@ class Handler(BaseHTTPRequestHandler):
             mode = "pro"
         aspect = payload.get("aspect") or "original"
         base_seed = payload.get("seed")
+        mask_image_name = Path(payload.get("mask_image_name") or "").name or None
         if base_seed in (None, "", 0, "0"):
             base_seed = random.randint(1, 4294960000)
         else:
@@ -1203,7 +1443,7 @@ class Handler(BaseHTTPRequestHandler):
         item_ids = []
         for index in range(count):
             seed = (base_seed + index * 9973) % 4294967295
-            graph = build_graph(images, prompt, aspect, steps, seed, connections, mode)
+            graph = build_graph(images, prompt, aspect, steps, seed, connections, mode, mask_image_name)
             body = {
                 "batch": {
                     "batch_id": f"simple-mode-{random.randint(100000, 999999)}-{index}",
@@ -1218,6 +1458,41 @@ class Handler(BaseHTTPRequestHandler):
             item_ids.extend(response.get("item_ids") or [])
 
         self.send_json({"item_ids": item_ids, "seed": base_seed})
+
+    def handle_video_generate(self):
+        payload = self.read_json()
+        prompt = (payload.get("prompt") or "").strip()
+        if not prompt:
+            self.send_json({"error": "A motion prompt is required."}, status=400)
+            return
+        images = [image for image in (payload.get("images") or []) if image.get("image_name")]
+        source_image = images[0] if images else None
+        count = max(1, min(2, int(payload.get("count") or 1)))
+        base_seed = int(payload.get("seed") or random.randint(1, 2147483000))
+        item_ids = []
+        for index in range(count):
+            graph = build_video_graph(
+                prompt,
+                source_image=source_image,
+                resolution=payload.get("resolution") or "480p",
+                frames=payload.get("frames") or 49,
+                fps=payload.get("fps") or 16,
+                steps=payload.get("steps") or 20,
+                seed=(base_seed + index * 7919) % 2147483647,
+            )
+            body = {
+                "batch": {
+                    "batch_id": f"simple-video-{random.randint(100000, 999999)}-{index}",
+                    "origin": "simple-mode-video",
+                    "destination": "gallery",
+                    "graph": graph,
+                    "runs": 1,
+                },
+                "prepend": False,
+            }
+            response = invoke_json("/api/v1/queue/default/enqueue_batch", method="POST", payload=body, timeout=30)
+            item_ids.extend(response.get("item_ids") or [])
+        self.send_json({"item_ids": item_ids, "seed": base_seed, "media_type": "video"})
 
 
 def main():

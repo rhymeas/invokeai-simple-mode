@@ -104,7 +104,7 @@ namespace InvokeAILauncher
             Controls.Add(titleLabel);
 
             var subtitleLabel = new Label();
-            subtitleLabel.Text = "Community node canvas | v1.0.0";
+            subtitleLabel.Text = "Community node canvas | v1.1.0";
             subtitleLabel.Font = new Font("Segoe UI", 10F);
             subtitleLabel.ForeColor = Color.FromArgb(150, 164, 178);
             subtitleLabel.AutoSize = true;

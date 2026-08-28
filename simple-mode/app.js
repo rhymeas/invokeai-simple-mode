@@ -28,6 +28,7 @@ const state = {
   lastPromptRange: null,
   nativeCatalog: null,
   nativeCatalogLoading: false,
+  videoStatus: null,
   renderAfterPointer: false,
   blockTokenDrag: null,
   globalTokenDrag: null,
@@ -114,9 +115,9 @@ function setEditableText(element, text) {
   element.innerHTML = safe.replace(/(@\d+)/g, '<span class="prompt-mention">$1</span>');
 }
 
-function serializableImage(image) {
-  if (!image || image.pending || !image.image_name) return null;
-  const copy = { ...image };
+function serializableImage(media) {
+  if (!media || media.pending || (!media.image_name && !media.video_name)) return null;
+  const copy = { ...media };
   delete copy.pending;
   delete copy.tempObjectUrl;
   return copy;
@@ -410,6 +411,12 @@ const blockDefaults = {
     prompt: 'Extract the key visual language from @1 as a clean reusable reference: shapes, materials, lighting, color palette, and composition rules.',
     hint: 'Describe what should be extracted',
   },
+  animate: {
+    title: 'Video',
+    icon: '▶',
+    prompt: 'Create a deliberate cinematic motion while preserving the subject, composition, materials, and visual identity.',
+    hint: 'Describe motion, camera movement, timing, and what must stay fixed',
+  },
 };
 
 function nativeFeatures() {
@@ -502,6 +509,23 @@ function imageUrl(image, kind = 'thumbnail') {
   if (url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')) return url;
   const cleanUrl = url.startsWith('/') ? url.slice(1) : url;
   return `${invokeBase}/${cleanUrl}`;
+}
+
+function isVideo(media) {
+  return Boolean(media?.video_name || media?.media_type === 'video');
+}
+
+function mediaUrl(media, kind = 'full') {
+  if (isVideo(media)) return media?.video_url || '';
+  return imageUrl(media, kind);
+}
+
+function mediaPreviewHtml(media, { thumbnail = false, controls = false } = {}) {
+  const src = escapeHtml(mediaUrl(media, thumbnail ? 'thumbnail' : 'full'));
+  if (isVideo(media)) {
+    return `<video src="${src}" muted loop playsinline${controls ? ' controls' : ' autoplay'}></video>`;
+  }
+  return `<img src="${src}" alt="" draggable="false">`;
 }
 
 function labelFor(slot) {
@@ -1201,7 +1225,7 @@ function renderBlockTokens(block) {
   return activeSources
     .map((sourceEndpoint, index) => `
       <div class="block-token${index === 0 ? ' main-token' : ''}" draggable="true" data-block-token-endpoint="${escapeHtml(sourceEndpoint)}" data-insert-source="${escapeHtml(sourceEndpoint)}" title="Drag to reorder. Click to insert @${index + 1}. Source: ${escapeHtml(labelForEndpoint(sourceEndpoint))}">
-        <img src="${imageUrl(imageForEndpoint(sourceEndpoint))}" alt="" draggable="false">
+        ${mediaPreviewHtml(imageForEndpoint(sourceEndpoint), { thumbnail: true })}
         <span>${index === 0 ? 'MAIN @1' : `@${index + 1}`}</span>
         <button class="block-token-remove" data-remove-block-source="${escapeHtml(sourceEndpoint)}" type="button" title="Remove from this node">×</button>
       </div>
@@ -1236,10 +1260,6 @@ function hideBlockMenu() {
 }
 
 function addBlock(kind, position = null, sourceEndpoint = null) {
-  if (kind === 'animate') {
-    setUploadStatus('Animate needs a local video model; image workflows can use Modify, Variate, or Extract.', 'error');
-    return null;
-  }
   const config = configForBlock(kind);
   const id = `${kind}-${state.blockCounter += 1}`;
   const block = {
@@ -1254,8 +1274,8 @@ function addBlock(kind, position = null, sourceEndpoint = null) {
     hiddenSources: [],
     x: position?.x ?? 410,
     y: position?.y ?? 160,
-    w: config.nativeFeature ? 370 : 340,
-    h: config.nativeFeature ? 260 : 300,
+    w: config.nativeFeature ? 370 : kind === 'animate' ? 390 : 340,
+    h: config.nativeFeature ? 260 : kind === 'animate' ? 390 : 300,
   };
   state.blocks.push(block);
   const from = sourceEndpoint || state.connectFrom || state.selected;
@@ -1403,6 +1423,48 @@ function renderNativeBlockBody(block) {
   `;
 }
 
+function renderVideoBlockBody(block) {
+  const settings = block.videoSettings || {};
+  const status = state.videoStatus;
+  const activeJob = status?.jobs?.find((job) => ['waiting', 'downloading', 'running', 'paused'].includes(job.status));
+  const statusText = status?.ready
+    ? `Ready · ${status.model?.name || 'Wan 2.2 TI2V-5B'}`
+    : activeJob
+      ? `Installing · ${activeJob.status}`
+      : 'Video model not installed';
+  return `
+    <div class="workflow-body video-body">
+      <div class="block-token-row">${renderBlockTokens(block)}</div>
+      <div class="block-prompt" data-block-prompt="${block.id}" contenteditable="true" spellcheck="true">${blockPromptHtml(block)}</div>
+      <div class="video-settings">
+        <label><span>Quality</span><select data-video-setting="resolution">
+          <option value="480p"${(settings.resolution || '480p') === '480p' ? ' selected' : ''}>Fast · 480p</option>
+          <option value="720p"${settings.resolution === '720p' ? ' selected' : ''}>Detail · 720p</option>
+        </select></label>
+        <label><span>Length</span><select data-video-setting="frames">
+          <option value="33"${String(settings.frames || 49) === '33' ? ' selected' : ''}>2 sec</option>
+          <option value="49"${String(settings.frames || 49) === '49' ? ' selected' : ''}>3 sec</option>
+          <option value="81"${String(settings.frames || 49) === '81' ? ' selected' : ''}>5 sec</option>
+        </select></label>
+        <label><span>Precision</span><select data-video-setting="steps">
+          <option value="12"${String(settings.steps || 20) === '12' ? ' selected' : ''}>Draft</option>
+          <option value="20"${String(settings.steps || 20) === '20' ? ' selected' : ''}>Balanced</option>
+          <option value="30"${String(settings.steps || 20) === '30' ? ' selected' : ''}>High</option>
+        </select></label>
+      </div>
+      <div class="video-model-status${status?.ready ? ' ready' : ''}">
+        <span>${escapeHtml(statusText)}</span>
+        ${status?.ready || activeJob ? '' : '<button class="video-install" type="button">Set up video</button>'}
+      </div>
+      <div class="block-actions">
+        <button class="improve-prompt" type="button" title="Improve motion prompt">✧</button>
+        <span class="video-engine">Wan 2.2</span>
+        <button class="run-block" type="button" title="Generate video">→</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderBlockDetailsPopover(block) {
   if (!block.infoOpen) return '';
   const feature = block.nativeFeature;
@@ -1464,7 +1526,7 @@ function renderWorkflowBlock(block) {
       <strong>${title}</strong>
       <button class="workflow-info" type="button" title="Show node details">i</button>
     </div>
-    ${block.nativeFeature ? renderNativeBlockBody(block) : `<div class="workflow-body">
+    ${block.nativeFeature ? renderNativeBlockBody(block) : block.kind === 'animate' ? renderVideoBlockBody(block) : `<div class="workflow-body">
       <div class="block-token-row">${renderBlockTokens(block)}</div>
       <div class="block-prompt" data-block-prompt="${block.id}" contenteditable="true" spellcheck="true">${blockPromptHtml(block)}</div>
       <div class="block-actions">
@@ -1490,16 +1552,17 @@ function renderOutputNode(output) {
   element.style.width = `${output.w || 178}px`;
   element.style.height = `${output.h || 154}px`;
   const label = output.label || 'Output';
-  if (output.image?.image_url) {
+  if (mediaUrl(output.image)) {
+    const video = isVideo(output.image);
     element.innerHTML = `
-      <button class="canvas-item-delete" data-delete-endpoint="${endpoint}" type="button" title="Delete image from canvas">×</button>
+      <button class="canvas-item-delete" data-delete-endpoint="${endpoint}" type="button" title="Delete result from canvas">×</button>
       <div class="node-head"><span>${label}</span><span>ready</span></div>
       <div class="node-body">
-        <img src="${imageUrl(output.image, 'full')}" alt="" draggable="false">
+        ${mediaPreviewHtml(output.image)}
       </div>
-      <div class="image-actions" aria-label="Image actions">
+      <div class="image-actions" aria-label="Result actions">
         <button data-image-action="focus" type="button" title="Open large">↗</button>
-        <button data-image-action="upscale" type="button" title="Upscale and download">2×</button>
+        ${video ? '' : '<button data-image-action="upscale" type="button" title="Upscale and download">2×</button>'}
         <button data-image-action="download" type="button" title="Download">↓</button>
       </div>
       <button class="node-connect${state.connectFrom === endpoint ? ' active' : ''}" type="button" title="Connect result to a node"></button>
@@ -2143,7 +2206,7 @@ function syncModeControls() {
   }
 }
 
-function createResultCards(ids, sourceEndpointOverride = null) {
+function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'image') {
   resultsGrid.innerHTML = '';
   const sourceEndpoint = sourceEndpointOverride || (state.selected && endpointType(state.selected) === 'block'
     ? state.selected
@@ -2151,7 +2214,7 @@ function createResultCards(ids, sourceEndpointOverride = null) {
   state.outputs = ids.map((id, index) => ({
     id: String(id),
     itemId: id,
-    label: `Variant ${index + 1}`,
+    label: outputKind === 'video' ? `Video ${index + 1}` : `Variant ${index + 1}`,
     status: 'queued',
     x: 790 + (index % 2) * 188,
     y: 110 + Math.floor(index / 2) * 190,
@@ -2164,7 +2227,7 @@ function createResultCards(ids, sourceEndpointOverride = null) {
     const card = document.createElement('div');
     card.className = 'result-card loading';
     card.dataset.itemId = id;
-    card.innerHTML = `<div class="result-placeholder"><span></span></div><small>Variant ${index + 1}</small>`;
+    card.innerHTML = `<div class="result-placeholder"><span></span></div><small>${outputKind === 'video' ? 'Video' : 'Variant'} ${index + 1}</small>`;
     resultsGrid.appendChild(card);
   });
   updateOutputMode();
@@ -2177,12 +2240,13 @@ function restoreResultCards() {
     const card = document.createElement('div');
     card.className = `result-card${output.image ? '' : ' loading'}`;
     card.dataset.itemId = output.itemId;
-    if (output.image) {
+    if (mediaUrl(output.image)) {
+      const video = isVideo(output.image);
       card.innerHTML = `
-        <button class="result-open" data-output-id="${escapeHtml(output.id)}" type="button"><img src="${imageUrl(output.image, 'full')}" alt="Generated result"></button>
+        <button class="result-open" data-output-id="${escapeHtml(output.id)}" type="button">${mediaPreviewHtml(output.image)}</button>
         <div class="result-actions">
           <button data-output-id="${escapeHtml(output.id)}" data-image-action="focus" type="button" title="Open large">↗</button>
-          <button data-output-id="${escapeHtml(output.id)}" data-image-action="upscale" type="button" title="Upscale">2×</button>
+          ${video ? '' : `<button data-output-id="${escapeHtml(output.id)}" data-image-action="upscale" type="button" title="Upscale">2×</button>`}
           <button data-output-id="${escapeHtml(output.id)}" data-image-action="download" type="button" title="Download">↓</button>
         </div>
       `;
@@ -2202,19 +2266,21 @@ async function pollItem(id) {
   if (!card) return;
   const response = await fetch(`/api/item/${id}`);
   const item = await response.json();
-  if (item.status === 'completed' && item.image) {
+  const media = item.media || item.video || item.image;
+  if (item.status === 'completed' && media) {
     const output = state.outputs.find((entry) => String(entry.itemId) === String(id));
     if (output) {
       output.status = 'completed';
-      output.image = item.image;
+      output.image = media;
       requestCanvasRender();
       renderFocusVariants();
     }
+    const video = isVideo(media);
     card.innerHTML = `
-      <button class="result-open" data-output-id="${id}" type="button"><img src="${item.image.image_url}" alt="Generated result"></button>
+      <button class="result-open" data-output-id="${id}" type="button">${mediaPreviewHtml(media)}</button>
       <div class="result-actions">
         <button data-output-id="${id}" data-image-action="focus" type="button" title="Open large">↗</button>
-        <button data-output-id="${id}" data-image-action="upscale" type="button" title="Upscale">2×</button>
+        ${video ? '' : `<button data-output-id="${id}" data-image-action="upscale" type="button" title="Upscale">2×</button>`}
         <button data-output-id="${id}" data-image-action="download" type="button" title="Download">↓</button>
       </div>
     `;
@@ -2242,7 +2308,7 @@ async function pollItem(id) {
   setTimeout(() => pollItem(id), 3500);
 }
 
-async function submitGeneration({ prompt, images, sourceEndpoint = null, connections = collectConnections() }) {
+async function submitGeneration({ prompt, images, sourceEndpoint = null, connections = collectConnections(), extraPayload = {} }) {
   const cleanPrompt = (prompt || '').trim();
   if (!cleanPrompt) {
     alert('Prompt is required.');
@@ -2268,6 +2334,7 @@ async function submitGeneration({ prompt, images, sourceEndpoint = null, connect
       mode: document.getElementById('mode').value,
       steps: Number(document.getElementById('steps').value),
       count: Number(document.getElementById('count').value),
+      ...extraPayload,
     };
     const response = await fetch('/api/generate', {
       method: 'POST',
@@ -2299,6 +2366,10 @@ async function generateFromBlock(blockId) {
   const editable = document.querySelector(`[data-block-prompt="${blockId}"]`);
   if (!block) return;
   if (editable) updateBlockPrompt(blockId, editable);
+  if (block.kind === 'animate') {
+    await submitVideoGeneration(block);
+    return;
+  }
   if (block.nativeFeature) {
     await runNativeBlock(blockId);
     return;
@@ -2310,6 +2381,79 @@ async function generateFromBlock(blockId) {
     sourceEndpoint: blockEndpoint(block.id),
     connections: collectConnectionsForBlock(block),
   });
+}
+
+async function refreshVideoStatus({ render = false } = {}) {
+  try {
+    const response = await fetch('/api/video/status');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Video status unavailable.');
+    state.videoStatus = data;
+    if (render) renderCanvas();
+    return data;
+  } catch (error) {
+    state.videoStatus = { supported: false, ready: false, error: error.message, jobs: [] };
+    if (render) renderCanvas();
+    return state.videoStatus;
+  }
+}
+
+async function installVideoModels() {
+  setUploadStatus('Starting the local Wan video setup...', 'busy');
+  try {
+    const response = await fetch('/api/video/install', { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Video setup could not start.');
+    state.videoStatus = data;
+    renderCanvas();
+    setUploadStatus('Wan video components are downloading in InvokeAI. Image generation remains queued separately.');
+    window.setTimeout(() => refreshVideoStatus({ render: true }), 3000);
+  } catch (error) {
+    setUploadStatus(error.message, 'error');
+    alert(error.message);
+  }
+}
+
+async function submitVideoGeneration(block) {
+  const status = state.videoStatus || await refreshVideoStatus();
+  if (!status.ready) {
+    setUploadStatus('Set up the local Wan video model in this node before generating.', 'error');
+    return;
+  }
+  const prompt = (block.prompt || '').trim();
+  if (!prompt) {
+    setUploadStatus('Describe the motion or camera move first.', 'error');
+    return;
+  }
+  const images = collectImagesForBlock(block).filter((media) => media.image_name).slice(0, 1);
+  const settings = block.videoSettings || {};
+  setBusy(true);
+  setUploadStatus('Queueing Wan video after the current Invoke job...', 'busy');
+  try {
+    const response = await fetch('/api/video/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        images,
+        resolution: settings.resolution || '480p',
+        frames: Number(settings.frames || 49),
+        fps: 16,
+        steps: Number(settings.steps || 20),
+        count: 1,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Video generation failed.');
+    createResultCards(data.item_ids, blockEndpoint(block.id), 'video');
+    data.item_ids.forEach((id) => pollItem(id));
+    setUploadStatus('Video queued. The node will become a playable MP4 when InvokeAI finishes.');
+  } catch (error) {
+    setUploadStatus(error.message, 'error');
+    alert(error.message);
+  } finally {
+    setBusy(false);
+  }
 }
 
 function replaceGalleryOutputs(block, images) {
@@ -2485,17 +2629,18 @@ async function runNativeBlock(blockId) {
   }
 }
 
-function imageDownloadUrl(image) {
-  if (!image?.image_name) return image?.image_url || '';
-  return `/api/download/${encodeURIComponent(image.image_name)}`;
+function imageDownloadUrl(media) {
+  if (media?.video_name) return `/api/download-video/${encodeURIComponent(media.video_name)}`;
+  if (!media?.image_name) return mediaUrl(media) || '';
+  return `/api/download/${encodeURIComponent(media.image_name)}`;
 }
 
-function triggerDownload(image) {
-  const url = imageDownloadUrl(image);
+function triggerDownload(media) {
+  const url = imageDownloadUrl(media);
   if (!url) return;
   const link = document.createElement('a');
   link.href = url;
-  link.download = image.image_name || 'invokeai-image.png';
+  link.download = media.video_name || media.image_name || 'invokeai-result';
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -2522,19 +2667,61 @@ function createCompletedOutput(image, label, sourceEndpoint = null) {
   return output;
 }
 
+function replaceEndpointMedia(endpoint, media) {
+  if (!endpoint || !media) return false;
+  if (endpointType(endpoint) === 'image' && !isVideo(media)) {
+    const slot = Number(endpointId(endpoint));
+    const previous = state.images[slot] || {};
+    state.images[slot] = {
+      ...previous,
+      ...media,
+      role: previous.role,
+      note: previous.note,
+    };
+    setSlotPreview(slot, state.images[slot]);
+    upsertNode(slot);
+    renderTokens();
+    renderCanvas();
+    scheduleAutosave();
+    return true;
+  }
+  if (endpointType(endpoint) === 'output') {
+    const output = state.outputs.find((item) => item.id === endpointId(endpoint));
+    if (!output) return false;
+    output.image = { ...media };
+    output.status = 'completed';
+    restoreResultCards();
+    renderCanvas();
+    scheduleAutosave();
+    return true;
+  }
+  return false;
+}
+
 function openFocus(endpoint) {
   const image = imageForEndpoint(endpoint);
-  if (!image?.image_url) return;
+  if (!mediaUrl(image)) return;
   state.focus = {
     endpoint,
+    originalEndpoint: endpoint,
+    originalImage: { ...image },
     image,
     label: labelForEndpoint(endpoint),
     zoom: 1,
+    mode: 'direct',
+    maskDirty: false,
+    selectedMedia: null,
   };
+  const view = ensureFocusView();
+  view.querySelector('#focusPrompt').innerText = '';
   renderFocusView();
 }
 
 function closeFocus() {
+  if (state.focus?.selectedMedia) {
+    replaceEndpointMedia(state.focus.originalEndpoint, state.focus.selectedMedia);
+    setUploadStatus('Edited result applied to the original canvas item.');
+  }
   state.focus = null;
   renderFocusView();
 }
@@ -2557,30 +2744,43 @@ function ensureFocusView() {
         <button data-focus-action="zoom-out" type="button">-</button>
         <span id="focusZoom">100%</span>
         <button data-focus-action="zoom-in" type="button">+</button>
-        <button data-focus-action="use-main" type="button">Use as @1</button>
-        <button data-focus-action="use-ref" type="button">Add ref</button>
-        <button data-focus-action="upscale" type="button">2x upscale</button>
+        <button data-focus-action="use-main" data-image-only type="button">Use as @1</button>
+        <button data-focus-action="use-ref" data-image-only type="button">Add ref</button>
+        <button data-focus-action="upscale" data-image-only type="button">2x upscale</button>
         <button data-focus-action="download" type="button">Download</button>
       </div>
     </div>
     <div class="focus-main">
       <div class="focus-stage">
-        <img id="focusImage" alt="">
+        <div id="focusMediaWrap" class="focus-media-wrap">
+          <img id="focusImage" alt="">
+          <video id="focusVideo" controls loop playsinline></video>
+          <canvas id="focusMask" aria-label="Inpaint mask"></canvas>
+        </div>
         <div id="focusVariants" class="focus-variants"></div>
       </div>
       <aside class="focus-panel">
         <div class="panel-title">Focus edit</div>
+        <div class="focus-mode" role="group" aria-label="Edit mode">
+          <button data-focus-action="mode-direct" class="active" type="button">Direct edit</button>
+          <button data-focus-action="mode-inpaint" type="button">Inpaint</button>
+        </div>
+        <div class="focus-mask-tools" hidden>
+          <label><span>Brush</span><input id="focusBrushSize" type="range" min="8" max="180" value="56"></label>
+          <button data-focus-action="clear-mask" type="button">Clear mask</button>
+        </div>
         <div class="focus-prompt-wrap">
           <div id="focusPrompt" class="prompt-editor" contenteditable="true" spellcheck="true" data-placeholder="Describe the edit for this image."></div>
           <button data-focus-action="enhance-prompt" class="focus-enhance-prompt" type="button" title="Improve prompt">✧</button>
         </div>
         <button data-focus-action="generate" class="generate-button" type="button">Generate from focus</button>
-        <p id="focusStatus" class="note">The focused image is sent as @1. Current references remain available as @2, @3, and so on.</p>
+        <p id="focusStatus" class="note">Direct edit uses the focused image as @1. Inpaint changes only the painted area.</p>
       </aside>
     </div>
   `;
   document.body.appendChild(view);
   view.addEventListener('click', handleFocusAction);
+  wireFocusMask(view);
   return view;
 }
 
@@ -2594,17 +2794,125 @@ function setFocusBusy(busy, text = '') {
   if (status && text) status.textContent = text;
 }
 
+function clearFocusMask() {
+  const canvas = ensureFocusView().querySelector('#focusMask');
+  if (!canvas?.width || !canvas?.height) return;
+  const context = canvas.getContext('2d');
+  context.save();
+  context.globalCompositeOperation = 'source-over';
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.restore();
+  if (state.focus) state.focus.maskDirty = false;
+}
+
+function syncFocusMediaSize() {
+  const view = ensureFocusView();
+  const image = view.querySelector('#focusImage');
+  const wrap = view.querySelector('#focusMediaWrap');
+  const canvas = view.querySelector('#focusMask');
+  if (!image.naturalWidth || !image.naturalHeight || !state.focus) return;
+  const stage = view.querySelector('.focus-stage');
+  const maxWidth = Math.max(240, stage.clientWidth * 0.9);
+  const maxHeight = Math.max(180, stage.clientHeight * 0.86);
+  const scale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight, 1);
+  wrap.style.width = `${Math.round(image.naturalWidth * scale)}px`;
+  wrap.style.height = `${Math.round(image.naturalHeight * scale)}px`;
+  const source = image.currentSrc || image.src;
+  if (canvas.dataset.source !== source) {
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.dataset.source = source;
+    clearFocusMask();
+  }
+}
+
+function wireFocusMask(view) {
+  const canvas = view.querySelector('#focusMask');
+  const draw = (event, start = false) => {
+    if (!state.focus || state.focus.mode !== 'inpaint' || isVideo(state.focus.image)) return;
+    const rect = canvas.getBoundingClientRect();
+    const point = {
+      x: (event.clientX - rect.left) * canvas.width / rect.width,
+      y: (event.clientY - rect.top) * canvas.height / rect.height,
+    };
+    const context = canvas.getContext('2d');
+    context.strokeStyle = '#000';
+    context.fillStyle = '#000';
+    context.lineWidth = Number(view.querySelector('#focusBrushSize').value || 56) * canvas.width / Math.max(1, rect.width);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    if (start || !state.focus.maskPoint) {
+      context.beginPath();
+      context.arc(point.x, point.y, context.lineWidth / 2, 0, Math.PI * 2);
+      context.fill();
+    } else {
+      context.beginPath();
+      context.moveTo(state.focus.maskPoint.x, state.focus.maskPoint.y);
+      context.lineTo(point.x, point.y);
+      context.stroke();
+    }
+    state.focus.maskPoint = point;
+    state.focus.maskDirty = true;
+  };
+  canvas.addEventListener('pointerdown', (event) => {
+    if (state.focus?.mode !== 'inpaint') return;
+    canvas.setPointerCapture(event.pointerId);
+    state.focus.maskPointerId = event.pointerId;
+    draw(event, true);
+    event.preventDefault();
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    if (state.focus?.maskPointerId !== event.pointerId) return;
+    draw(event);
+    event.preventDefault();
+  });
+  const finish = (event) => {
+    if (state.focus?.maskPointerId !== event.pointerId) return;
+    state.focus.maskPointerId = null;
+    state.focus.maskPoint = null;
+    try { canvas.releasePointerCapture(event.pointerId); } catch (_) {}
+  };
+  canvas.addEventListener('pointerup', finish);
+  canvas.addEventListener('pointercancel', finish);
+}
+
+function focusMaskBlob() {
+  const canvas = ensureFocusView().querySelector('#focusMask');
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+}
+
 function renderFocusView() {
   const view = ensureFocusView();
   const focus = state.focus;
   view.hidden = !focus;
   if (!focus) return;
-  view.querySelector('#focusTitle').textContent = focus.label || 'Image';
-  view.querySelector('#focusMeta').textContent = focus.image?.image_name || 'Ready';
+  const videoFocus = isVideo(focus.image);
+  view.classList.toggle('video-focus', videoFocus);
+  view.querySelector('#focusTitle').textContent = focus.label || (videoFocus ? 'Video' : 'Image');
+  view.querySelector('#focusMeta').textContent = focus.image?.video_name || focus.image?.image_name || 'Ready';
   view.querySelector('#focusZoom').textContent = `${Math.round((focus.zoom || 1) * 100)}%`;
   const img = view.querySelector('#focusImage');
-  img.src = imageUrl(focus.image, 'full') || focus.image.image_url;
-  img.style.transform = `scale(${focus.zoom || 1})`;
+  const video = view.querySelector('#focusVideo');
+  const wrap = view.querySelector('#focusMediaWrap');
+  img.hidden = videoFocus;
+  video.hidden = !videoFocus;
+  if (videoFocus) {
+    if (video.src !== mediaUrl(focus.image)) video.src = mediaUrl(focus.image);
+    wrap.style.width = 'min(92%, 1100px)';
+    wrap.style.height = 'auto';
+  } else {
+    const src = imageUrl(focus.image, 'full') || focus.image.image_url;
+    if (img.src !== src) img.src = src;
+    img.onload = syncFocusMediaSize;
+    if (img.complete) syncFocusMediaSize();
+  }
+  wrap.style.transform = `scale(${focus.zoom || 1})`;
+  view.querySelectorAll('[data-image-only]').forEach((button) => { button.hidden = videoFocus; });
+  view.querySelector('[data-focus-action="mode-direct"]')?.classList.toggle('active', focus.mode !== 'inpaint');
+  view.querySelector('[data-focus-action="mode-inpaint"]')?.classList.toggle('active', focus.mode === 'inpaint');
+  view.querySelector('.focus-mask-tools').hidden = focus.mode !== 'inpaint' || videoFocus;
+  view.querySelector('#focusMask').hidden = focus.mode !== 'inpaint' || videoFocus;
   renderFocusVariants();
   setFocusBusy(state.focusBusy);
 }
@@ -2733,8 +3041,8 @@ async function upscaleImage(image, sourceEndpoint = null, directDownload = true,
     if (state.focus) {
       state.focus = {
         ...state.focus,
-        endpoint: outputEndpoint(output.id),
         image: upscaled,
+        selectedMedia: upscaled,
         label: `${completedScale}x AI Upscale`,
         zoom: 1,
       };
@@ -2754,8 +3062,12 @@ async function upscaleImage(image, sourceEndpoint = null, directDownload = true,
 
 async function generateFromFocus() {
   const focus = state.focus;
-  if (!focus?.image) return;
+  if (!focus?.image || isVideo(focus.image)) return;
   const prompt = focusPromptText();
+  if (!prompt) {
+    setUploadStatus('Describe the edit first.', 'error');
+    return;
+  }
   const focusImage = {
     ...focus.image,
     slot: 0,
@@ -2764,21 +3076,42 @@ async function generateFromFocus() {
   };
   const references = collectImages()
     .filter((image) => image.slot > 0 && image.image_name !== focus.image.image_name);
-  setFocusBusy(true, 'Queueing focused variants...');
-  state.focus.variantIds = [];
-  renderFocusVariants();
-  const ids = await submitGeneration({
-    prompt,
-    images: [focusImage, ...references],
-    sourceEndpoint: focus.endpoint,
-    connections: [`${labelForEndpoint(focus.endpoint)} opened in Focus Edit as @1`],
-  });
-  if (ids?.length) {
-    state.focus.variantIds = ids.map(String);
+  try {
+    let maskImageName = null;
+    if (focus.mode === 'inpaint') {
+      if (!focus.maskDirty) {
+        setUploadStatus('Paint the area you want to change first.', 'error');
+        return;
+      }
+      setFocusBusy(true, 'Uploading the inpaint mask...');
+      const blob = await focusMaskBlob();
+      const form = new FormData();
+      form.append('file', blob, `focus-mask-${Date.now()}.png`);
+      const response = await fetch('/api/upload?is_intermediate=true', { method: 'POST', body: form });
+      const mask = await response.json();
+      if (!response.ok) throw new Error(mask.error || 'Mask upload failed.');
+      maskImageName = mask.image_name;
+    }
+    setFocusBusy(true, focus.mode === 'inpaint' ? 'Queueing masked variants...' : 'Queueing focused variants...');
+    state.focus.variantIds = [];
     renderFocusVariants();
-    setFocusBusy(false, 'Choose a variant below, or generate again with a tighter prompt.');
-  } else {
-    setFocusBusy(false, 'Focus generation did not queue.');
+    const ids = await submitGeneration({
+      prompt,
+      images: [focusImage, ...references],
+      sourceEndpoint: focus.endpoint,
+      connections: [`${labelForEndpoint(focus.endpoint)} opened in Focus Edit as @1`],
+      extraPayload: maskImageName ? { mask_image_name: maskImageName } : {},
+    });
+    if (ids?.length) {
+      state.focus.variantIds = ids.map(String);
+      renderFocusVariants();
+      setFocusBusy(false, 'Choose a variant below, or generate again with a tighter prompt.');
+    } else {
+      setFocusBusy(false, 'Focus generation did not queue.');
+    }
+  } catch (error) {
+    setFocusBusy(false, error.message || 'Focus generation failed.');
+    setUploadStatus(error.message || 'Focus generation failed.', 'error');
   }
 }
 
@@ -2799,8 +3132,8 @@ function chooseFocusVariant(id) {
   if (!output?.image) return;
   state.focus = {
     ...state.focus,
-    endpoint: outputEndpoint(output.id),
     image: output.image,
+    selectedMedia: output.image,
     label: output.label || 'Focused variant',
     zoom: 1,
     variantIds: [],
@@ -2819,6 +3152,18 @@ function handleFocusAction(event) {
   if (!button || !state.focus || state.focusBusy) return;
   const action = button.dataset.focusAction;
   if (action === 'back') closeFocus();
+  if (action === 'mode-direct') {
+    state.focus.mode = 'direct';
+    renderFocusView();
+  }
+  if (action === 'mode-inpaint') {
+    state.focus.mode = 'inpaint';
+    renderFocusView();
+  }
+  if (action === 'clear-mask') {
+    clearFocusMask();
+    setUploadStatus('Inpaint mask cleared.');
+  }
   if (action === 'zoom-in') {
     state.focus.zoom = Math.min(4, (state.focus.zoom || 1) * 1.2);
     renderFocusView();
@@ -3129,6 +3474,10 @@ function wireCanvas() {
       }
       if (event.target.closest('.improve-prompt')) {
         improveBlockPrompt(blockId);
+        return;
+      }
+      if (event.target.closest('.video-install')) {
+        installVideoModels();
         return;
       }
       if (event.target.closest('.run-block')) {
@@ -3531,6 +3880,17 @@ function wireCanvas() {
     }
   });
   nodeLayer.addEventListener('input', (event) => {
+    const videoSetting = event.target.closest('[data-video-setting]');
+    if (videoSetting) {
+      const blockElement = videoSetting.closest('.workflow-block');
+      const block = state.blocks.find((item) => item.id === blockElement?.dataset.blockId);
+      if (block) {
+        block.videoSettings = block.videoSettings || {};
+        block.videoSettings[videoSetting.dataset.videoSetting] = videoSetting.value;
+        scheduleAutosave();
+      }
+      return;
+    }
     const setting = event.target.closest('[data-native-setting]');
     if (setting && setting.type !== 'checkbox') {
       const blockElement = setting.closest('.workflow-block');
@@ -3547,6 +3907,17 @@ function wireCanvas() {
     updateBlockPrompt(editable.dataset.blockPrompt, editable);
   });
   nodeLayer.addEventListener('change', (event) => {
+    const videoSetting = event.target.closest('[data-video-setting]');
+    if (videoSetting) {
+      const blockElement = videoSetting.closest('.workflow-block');
+      const block = state.blocks.find((item) => item.id === blockElement?.dataset.blockId);
+      if (block) {
+        block.videoSettings = block.videoSettings || {};
+        block.videoSettings[videoSetting.dataset.videoSetting] = videoSetting.value;
+        scheduleAutosave();
+      }
+      return;
+    }
     const setting = event.target.closest('[data-native-setting]');
     if (!setting) return;
     const blockElement = setting.closest('.workflow-block');
@@ -3698,5 +4069,11 @@ updateOutputMode();
 syncModeControls();
 checkStatus();
 loadNativeCatalog();
+refreshVideoStatus({ render: true });
 initializeWorkspaces();
 setInterval(checkStatus, 5000);
+setInterval(() => {
+  if (state.videoStatus?.jobs?.some((job) => ['waiting', 'downloading', 'running'].includes(job.status))) {
+    refreshVideoStatus({ render: true });
+  }
+}, 10000);

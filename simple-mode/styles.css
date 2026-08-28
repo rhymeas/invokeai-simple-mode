@@ -1256,7 +1256,8 @@ textarea {
   box-shadow: 0 0 0 2px rgba(221, 255, 39, 0.32), 0 0 20px rgba(221, 255, 39, 0.18);
 }
 
-.block-token img {
+.block-token img,
+.block-token video {
   width: 100%;
   height: 100%;
   display: block;
@@ -2633,6 +2634,214 @@ textarea {
   .focus-panel {
     border-left: 0;
     border-top: 1px solid var(--border);
+  }
+}
+
+.canvas-output-node .node-body video,
+.result-open video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: #111;
+}
+
+.video-body {
+  gap: 10px;
+}
+
+.video-settings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.video-settings label {
+  display: grid;
+  gap: 4px;
+  color: #aaaab0;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.video-settings select {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid #45454a;
+  border-radius: 7px;
+  background: #242427;
+  color: #ededee;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.video-model-status {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #444448;
+  border-radius: 8px;
+  background: #202023;
+  color: #aaaab0;
+  font-size: 10px;
+}
+
+.video-model-status.ready {
+  color: #d8d8dc;
+}
+
+.video-model-status button {
+  flex: 0 0 auto;
+  height: 24px;
+  border: 1px solid #6760e8;
+  border-radius: 6px;
+  background: #514be0;
+  color: white;
+  padding: 0 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.video-engine {
+  margin: 0 auto;
+  color: #aaaab0;
+  font-size: 10px;
+}
+
+.focus-media-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  max-width: 92%;
+  max-height: 88%;
+  transform-origin: center;
+  transition: transform 120ms ease;
+}
+
+.focus-media-wrap #focusImage,
+.focus-media-wrap #focusVideo {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  display: block;
+  object-fit: contain;
+  transform: none;
+  border-radius: 8px;
+  background: #111;
+}
+
+.focus-media-wrap #focusVideo {
+  height: auto;
+}
+
+.focus-media-wrap #focusImage[hidden],
+.focus-media-wrap #focusVideo[hidden],
+.focus-media-wrap #focusMask[hidden] {
+  display: none !important;
+}
+
+#focusMask {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  opacity: 0.48;
+  mix-blend-mode: multiply;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.focus-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: #202023;
+}
+
+.focus-mode button,
+.focus-mask-tools button {
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #aaaab0;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.focus-mode button.active {
+  background: #3b3b40;
+  color: #f2f2f3;
+}
+
+.focus-mask-tools {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.focus-mask-tools[hidden] {
+  display: none;
+}
+
+.focus-mask-tools label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaaab0;
+  font-size: 11px;
+}
+
+.focus-mask-tools input {
+  min-width: 0;
+  width: 100%;
+}
+
+.focus-mask-tools button {
+  padding: 0 9px;
+  background: #29292d;
+}
+
+.focus-view.video-focus .focus-main {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.focus-view.video-focus .focus-panel {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .focus-topbar {
+    flex-wrap: wrap;
+    height: auto;
+  }
+
+  .focus-view {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .focus-actions {
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+  }
+
+  .focus-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(320px, 1fr) auto;
+  }
+
+  .focus-panel {
+    max-height: 42vh;
+    border-top: 1px solid var(--border);
+    border-left: 0;
   }
 }
 

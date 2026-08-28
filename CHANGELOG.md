@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 - 2026-08-28
+
+- Added native Wan 2.2 text-to-video and image-to-video generation nodes.
+- Added one-click optional video model setup and readiness progress in the node.
+- Added playable MP4 result nodes with focus playback and direct download.
+- Added brush-based inpainting in Focus Edit using InvokeAI denoise masks.
+- Added direct whole-image editing, focus variants, explicit selection, and canvas replacement on back.
+- Kept the original node position and connections when a focused image is replaced.
+- Added simplified quality, duration, and precision controls backed by real InvokeAI graph parameters.
+- Updated compatibility to InvokeAI 6.14.0.
+
 ## 1.0.0 - 2026-08-24
 
 - Added the free pan-and-zoom node canvas.
