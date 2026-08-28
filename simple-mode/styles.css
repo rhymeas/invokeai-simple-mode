@@ -2283,12 +2283,24 @@ h1 {
   min-height: 0;
   display: grid;
   place-items: center;
-  overflow: auto;
+  overflow: hidden;
   background:
     linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     #05070b;
   background-size: 28px 28px;
+}
+
+.focus-stage-scroll {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px 20px 96px;
+  overflow: auto;
+  box-sizing: border-box;
 }
 
 .focus-stage img {
@@ -2360,8 +2372,13 @@ h1 {
   z-index: 3;
   display: flex;
   gap: 10px;
+  max-width: calc(100% - 32px);
+  padding: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
   transform: translateX(-50%);
   pointer-events: auto;
+  scrollbar-width: thin;
 }
 
 .block-token .block-token-remove {
@@ -2400,6 +2417,7 @@ h1 {
 .focus-variant {
   position: relative;
   width: 96px;
+  flex: 0 0 96px;
   height: 64px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -2420,8 +2438,7 @@ h1 {
   display: block;
 }
 
-.focus-variant span,
-.focus-variant small {
+.focus-variant-index {
   position: absolute;
   right: 6px;
   top: 6px;
@@ -2434,6 +2451,61 @@ h1 {
   color: white;
   font-size: 11px;
   font-weight: 850;
+}
+
+.focus-variant.loading {
+  pointer-events: none;
+  background: #232326;
+}
+
+.focus-variant-loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  border-radius: inherit;
+  isolation: isolate;
+}
+
+.focus-variant-loader::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(105deg, transparent 18%, rgba(255, 255, 255, 0.1) 48%, transparent 78%);
+  animation: shimmer 1.35s ease-in-out infinite;
+  transform: translateX(-100%);
+}
+
+.focus-variant-spinner {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border: 2px solid #4a4a4f;
+  border-top-color: #c7c7cb;
+  border-radius: 50%;
+  background: transparent;
+  animation: spin 900ms linear infinite;
+}
+
+.focus-variant-status {
+  position: relative;
+  z-index: 1;
+  height: auto;
+  min-width: 0;
+  color: #a9a9af;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1;
+  background: transparent;
 }
 
 .result-card.loading {

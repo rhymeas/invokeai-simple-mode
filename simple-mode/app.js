@@ -3179,10 +3179,12 @@ function ensureFocusView() {
     </div>
     <div class="focus-main">
       <div class="focus-stage">
-        <div id="focusMediaWrap" class="focus-media-wrap">
-          <img id="focusImage" alt="">
-          <video id="focusVideo" controls loop playsinline></video>
-          <canvas id="focusMask" aria-label="Inpaint mask"></canvas>
+        <div class="focus-stage-scroll">
+          <div id="focusMediaWrap" class="focus-media-wrap">
+            <img id="focusImage" alt="">
+            <video id="focusVideo" controls loop playsinline></video>
+            <canvas id="focusMask" aria-label="Inpaint mask"></canvas>
+          </div>
         </div>
         <div id="focusVariants" class="focus-variants"></div>
       </div>
@@ -3360,17 +3362,20 @@ function renderFocusVariants() {
     const image = output?.image;
     const status = output?.status || 'queued';
     if (!image?.image_url) {
+      const statusLabel = displayQueueStatus(status);
       return `
         <div class="focus-variant loading" data-focus-variant-id="${escapeHtml(id)}">
-          <div class="result-placeholder"><span></span></div>
-          <small>${escapeHtml(displayQueueStatus(status))}</small>
+          <div class="focus-variant-loader" role="status" aria-label="${escapeHtml(statusLabel)}">
+            <span class="focus-variant-spinner" aria-hidden="true"></span>
+            <small class="focus-variant-status">${escapeHtml(statusLabel)}</small>
+          </div>
         </div>
       `;
     }
     return `
       <button class="focus-variant ready" data-focus-variant-action="choose" data-focus-variant-id="${escapeHtml(id)}" type="button" title="Choose variant ${index + 1}">
         <img src="${imageUrl(image)}" alt="">
-        <span>${index + 1}</span>
+        <span class="focus-variant-index">${index + 1}</span>
       </button>
     `;
   }).join('');

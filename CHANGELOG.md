@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 - 2026-08-28
+
+- Rebuilt the Focus Edit pending variant as a contained neutral loader with a dedicated spinner and compact status label.
+- Removed the shared purple badge styling that distorted the spinner and `Rendering` text.
+- Anchored Focus Edit variants to a fixed bottom rail so they no longer move with the image or escape the preview area.
+
 ## 1.2.2 - 2026-08-28
 
 - Reduced the Canvas title, selected model, model menu, and queue-note typography.
