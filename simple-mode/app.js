@@ -1568,10 +1568,18 @@ function renderOutputNode(output) {
       <button class="node-connect${state.connectFrom === endpoint ? ' active' : ''}" type="button" title="Connect result to a node"></button>
     `;
   } else {
+    const failed = output.status === 'failed' || output.status === 'canceled';
     element.innerHTML = `
       <button class="canvas-item-delete" data-delete-endpoint="${endpoint}" type="button" title="Delete output">×</button>
-      <div class="node-head"><span>${label}</span><span>${output.status || 'queued'}</span></div>
-      <div class="node-body"><div class="output-placeholder"><span></span></div></div>
+      <div class="node-head">
+        <span>${label}</span>
+        ${failed ? '<span class="output-failed">Failed</span>' : '<span class="output-head-progress" aria-label="Rendering"></span>'}
+      </div>
+      <div class="node-body">
+        ${failed
+          ? '<div class="output-failed-body">Generation stopped</div>'
+          : '<div class="output-placeholder" aria-label="Rendering"><span></span><em>Rendering</em></div>'}
+      </div>
     `;
   }
   return element;
@@ -2227,7 +2235,7 @@ function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'ima
     const card = document.createElement('div');
     card.className = 'result-card loading';
     card.dataset.itemId = id;
-    card.innerHTML = `<div class="result-placeholder"><span></span></div><small>${outputKind === 'video' ? 'Video' : 'Variant'} ${index + 1}</small>`;
+    card.innerHTML = `<div class="result-placeholder" aria-label="Rendering ${outputKind === 'video' ? 'video' : 'image'}"><span></span><em>Rendering</em></div>`;
     resultsGrid.appendChild(card);
   });
   updateOutputMode();
@@ -2254,7 +2262,7 @@ function restoreResultCards() {
       card.classList.remove('loading');
       card.innerHTML = `<span>${escapeHtml(output.status)}<br><small>Generation did not complete.</small></span>`;
     } else {
-      card.innerHTML = `<div class="result-placeholder"><span></span></div><small>${escapeHtml(output.status || 'waiting')}</small>`;
+      card.innerHTML = '<div class="result-placeholder" aria-label="Rendering"><span></span><em>Rendering</em></div>';
       if (/^\d+$/.test(String(output.itemId))) window.setTimeout(() => pollItem(output.itemId), 250);
     }
     resultsGrid.appendChild(card);
@@ -2304,7 +2312,7 @@ async function pollItem(id) {
     requestCanvasRender();
     renderFocusVariants();
   }
-  card.innerHTML = `<div class="result-placeholder"><span></span></div><small>${item.status || 'waiting'}</small>`;
+  card.innerHTML = '<div class="result-placeholder" aria-label="Rendering"><span></span><em>Rendering</em></div>';
   setTimeout(() => pollItem(id), 3500);
 }
 
@@ -2745,7 +2753,6 @@ function ensureFocusView() {
         <span id="focusZoom">100%</span>
         <button data-focus-action="zoom-in" type="button">+</button>
         <button data-focus-action="use-main" data-image-only type="button">Use as @1</button>
-        <button data-focus-action="use-ref" data-image-only type="button">Add ref</button>
         <button data-focus-action="upscale" data-image-only type="button">2x upscale</button>
         <button data-focus-action="download" type="button">Download</button>
       </div>
@@ -2768,6 +2775,10 @@ function ensureFocusView() {
         <div class="focus-mask-tools" hidden>
           <label><span>Brush</span><input id="focusBrushSize" type="range" min="8" max="180" value="56"></label>
           <button data-focus-action="clear-mask" type="button">Clear mask</button>
+        </div>
+        <div class="focus-reference-row" data-image-only>
+          <span>References</span>
+          <button data-focus-action="use-ref" type="button">Add ref</button>
         </div>
         <div class="focus-prompt-wrap">
           <div id="focusPrompt" class="prompt-editor" contenteditable="true" spellcheck="true" data-placeholder="Describe the edit for this image."></div>

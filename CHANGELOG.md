@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 - 2026-08-28
+
+- Replaced raw queue-state labels with a contained neutral rendering indicator.
+- Kept loading shimmer and spinner animations inside result image bounds.
+- Moved Focus Edit's Add ref action directly above the prompt field.
+
 ## 1.1.0 - 2026-08-28
 
 - Added native Wan 2.2 text-to-video and image-to-video generation nodes.

@@ -2002,6 +2002,14 @@ h1 {
   isolation: isolate;
 }
 
+.output-placeholder,
+.result-placeholder {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+}
+
 .node-loading::before,
 .output-placeholder::before,
 .result-placeholder::before {
@@ -2025,6 +2033,44 @@ h1 {
   animation: spin 900ms linear infinite;
 }
 
+.output-placeholder em,
+.result-placeholder em {
+  z-index: 1;
+  color: #b5b5bb;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.output-head-progress {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #7774ff;
+  box-shadow: 0 0 0 4px rgba(119, 116, 255, 0.14);
+  animation: output-pulse 1.2s ease-in-out infinite;
+}
+
+.output-failed {
+  color: #d1a6a6 !important;
+}
+
+.output-failed-body {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #b8a0a0;
+  font-size: 10px;
+}
+
+@keyframes output-pulse {
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
 .canvas-output-node {
   position: absolute;
   width: 168px;
@@ -2044,6 +2090,10 @@ h1 {
 }
 
 .canvas-output-node .node-body {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   border-radius: 0 0 7px 7px;
 }
@@ -2234,6 +2284,27 @@ h1 {
   position: relative;
 }
 
+.focus-reference-row {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #aaaab0;
+  font-size: 11px;
+}
+
+.focus-reference-row button {
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid #48484d;
+  border-radius: 9px;
+  background: #29292d;
+  color: #f0f0f2;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 #focusPrompt:empty::before {
   content: attr(data-placeholder);
   color: #8f9aad;
@@ -2337,7 +2408,7 @@ h1 {
 }
 
 .result-card.loading {
-  background: #f5f6f7;
+  background: #232326;
 }
 
 .workflow-block {
