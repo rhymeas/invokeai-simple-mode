@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.2 - 2026-08-28
+
+- Enabled visibility controls for the protected original Focus Edit layer while keeping its delete and reorder actions locked.
+- Added a stable empty-canvas state when every layer is hidden and immediate one-click restoration from any layer eye.
+- Preserved all-hidden layer state across workspace saves and Focus Edit reopen cycles.
+- Replaced raw connection-refused errors with a clear InvokeAI offline message and HTTP 503 response.
+
 ## 1.6.1 - 2026-08-28
 
 - Moved Focus Edit layer visibility controls beside each layer and made eye toggles switch the canvas immediately in both directions.

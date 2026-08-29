@@ -197,6 +197,16 @@ def invoke_json(path, method="GET", payload=None, timeout=30):
         return json.loads(body.decode("utf-8"))
 
 
+def invoke_error_message(error):
+    if isinstance(error, urllib.error.URLError):
+        return "InvokeAI is offline. Start InvokeAI to load models, upload images, or render."
+    return str(error)
+
+
+def invoke_error_status(error):
+    return 503 if isinstance(error, urllib.error.URLError) else 500
+
+
 def load_openapi():
     global OPENAPI_CACHE
     if OPENAPI_CACHE is None:
@@ -1170,7 +1180,7 @@ def ensure_generation_queue_idle():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "InvokeSimpleMode/1.6.1"
+    server_version = "InvokeSimpleMode/1.6.2"
 
     def log_message(self, fmt, *args):
         return
@@ -1223,8 +1233,11 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/ping":
                 self.send_json({"ok": True})
             elif path == "/api/status":
-                version = invoke_json("/api/v1/app/version", timeout=3)
-                self.send_json({"ok": True, "invoke": version})
+                try:
+                    version = invoke_json("/api/v1/app/version", timeout=3)
+                    self.send_json({"ok": True, "invoke": version})
+                except urllib.error.URLError as error:
+                    self.send_json({"ok": False, "status": "offline", "error": invoke_error_message(error)}, status=503)
             elif path == "/api/models":
                 self.send_json(image_model_catalog())
             elif path == "/api/native/features":
@@ -1266,7 +1279,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json({"error": "Not found"}, status=404)
         except Exception as exc:
-            self.send_json({"error": str(exc)}, status=500)
+            self.send_json({"error": invoke_error_message(exc)}, status=invoke_error_status(exc))
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -1299,7 +1312,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json({"error": "Not found"}, status=404)
         except Exception as exc:
-            self.send_json({"error": str(exc)}, status=500)
+            self.send_json({"error": invoke_error_message(exc)}, status=invoke_error_status(exc))
 
     def do_PUT(self):
         parsed = urlparse(self.path)
@@ -1314,7 +1327,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self.send_json({"error": str(exc)}, status=400)
         except Exception as exc:
-            self.send_json({"error": str(exc)}, status=500)
+            self.send_json({"error": invoke_error_message(exc)}, status=invoke_error_status(exc))
 
     def handle_upload(self, is_intermediate=False):
         form = cgi.FieldStorage(

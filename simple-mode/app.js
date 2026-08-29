@@ -272,7 +272,10 @@ function serializableFocusHistories() {
         return media ? { ...layer, media } : null;
       })
       .filter(Boolean);
-    return [endpoint, { activeLayerId: history?.activeLayerId || layers.at(-1)?.id || '', layers }];
+    const activeLayerId = layers.some((layer) => layer.id === history?.activeLayerId && layer.visible !== false)
+      ? history.activeLayerId
+      : (layers.filter((layer) => layer.visible !== false).at(-1)?.id || '');
+    return [endpoint, { activeLayerId, layers }];
   }).filter(([, history]) => history.layers.length));
 }
 
@@ -410,7 +413,7 @@ function applyWorkspaceDocument(document) {
       .map((layer) => ({ ...layer, visible: layer.visible !== false, media: { ...layer.media } }));
     const activeLayerId = layers.some((layer) => layer.id === history?.activeLayerId && layer.visible !== false)
       ? history.activeLayerId
-      : (layers.filter((layer) => layer.visible !== false).at(-1)?.id || layers[0]?.id || '');
+      : (layers.filter((layer) => layer.visible !== false).at(-1)?.id || '');
     return [endpoint, { activeLayerId, layers }];
   }).filter(([, history]) => history.layers.length));
   state.focusReferences = Object.fromEntries(Object.entries(saved.focusReferences || {}).map(([endpoint, references]) => [
@@ -3313,7 +3316,7 @@ function focusHistoryFor(endpoint, image, label, baseKind = 'original') {
     }));
     const activeLayerId = layers.some((layer) => layer.id === saved.activeLayerId && layer.visible !== false)
       ? saved.activeLayerId
-      : (layers.filter((layer) => layer.visible !== false).at(-1)?.id || layers[0].id);
+      : (layers.filter((layer) => layer.visible !== false).at(-1)?.id || '');
     return { activeLayerId, layers };
   }
   const base = {
@@ -3423,15 +3426,33 @@ function setActiveFocusLayer(layer) {
   clearFocusMask();
 }
 
+function clearActiveFocusLayer() {
+  const focus = state.focus;
+  if (!focus) return;
+  focus.activeLayerId = '';
+  focus.image = null;
+  focus.selectedMedia = null;
+  focus.label = 'No visible layer';
+  focus.zoom = 1;
+  focus.panX = 0;
+  focus.panY = 0;
+  focus.panMode = false;
+  focus.variantIds = [];
+  clearFocusMask();
+}
+
 function toggleFocusLayerVisibility(layerId) {
   const focus = state.focus;
   const layer = focus?.layers?.find((item) => item.id === layerId);
-  if (!layer || layer === focus.layers[0]) return;
+  if (!layer) return;
   const wasVisible = layer.visible !== false;
   layer.visible = !wasVisible;
-  const nextLayer = layer.visible ? layer : topVisibleFocusLayer(layer.id);
-  if (nextLayer) {
-    setActiveFocusLayer(nextLayer);
+  if (layer.visible) {
+    setActiveFocusLayer(layer);
+  } else if (layer.id === focus.activeLayerId) {
+    const nextLayer = topVisibleFocusLayer(layer.id);
+    if (nextLayer) setActiveFocusLayer(nextLayer);
+    else clearActiveFocusLayer();
   }
   saveFocusCollections();
   renderFocusView();
@@ -3462,17 +3483,8 @@ function deleteFocusLayer(layerId) {
   ));
   if (removed.id === focus.activeLayerId) {
     const fallback = topVisibleFocusLayer();
-    if (fallback) {
-      focus.activeLayerId = fallback.id;
-      focus.image = fallback.media;
-      focus.selectedMedia = fallback.id === focus.layers[0]?.id ? null : fallback.media;
-      focus.label = fallback.label;
-      focus.zoom = 1;
-      focus.panX = 0;
-      focus.panY = 0;
-      focus.variantIds = [];
-      clearFocusMask();
-    }
+    if (fallback) setActiveFocusLayer(fallback);
+    else clearActiveFocusLayer();
   }
   saveFocusCollections();
   renderFocusView();
@@ -3487,26 +3499,28 @@ function openFocus(endpoint) {
     ? state.outputs.find((output) => String(output.id) === String(endpointId(endpoint)))
     : null;
   const history = focusHistoryFor(endpoint, image, label, sourceOutput?.renderQuality === 'preview' ? 'preview' : 'original');
-  const activeLayer = history.layers.find((layer) => layer.id === history.activeLayerId) || history.layers.at(-1);
+  const activeLayer = history.layers.find((layer) => (
+    layer.id === history.activeLayerId && layer.visible !== false
+  )) || history.layers.filter((layer) => layer.visible !== false).at(-1) || null;
   const savedReferences = state.focusReferences[endpoint];
   const defaultReferences = collectImages()
-    .filter((item) => item.slot > 0 && item.image_name !== activeLayer.media.image_name)
+    .filter((item) => item.slot > 0 && item.image_name !== activeLayer?.media?.image_name)
     .slice(0, 4);
   state.focus = {
     endpoint,
     originalEndpoint: endpoint,
     originalImage: { ...history.layers[0].media },
-    image: activeLayer.media,
-    label: activeLayer.label,
+    image: activeLayer?.media || null,
+    label: activeLayer?.label || 'No visible layer',
     zoom: 1,
     panX: 0,
     panY: 0,
     panMode: false,
     mode: 'direct',
     maskDirty: false,
-    selectedMedia: activeLayer.id === history.layers[0].id ? null : activeLayer.media,
+    selectedMedia: activeLayer && activeLayer.id !== history.layers[0].id ? activeLayer.media : null,
     layers: history.layers,
-    activeLayerId: activeLayer.id,
+    activeLayerId: activeLayer?.id || '',
     references: (savedReferences || defaultReferences).map((item) => ({ ...item })),
     variantIds: [],
     variantQuality: 'preview',
@@ -3566,6 +3580,10 @@ function ensureFocusView() {
               <img id="focusImage" alt="">
               <video id="focusVideo" controls loop playsinline></video>
               <canvas id="focusMask" aria-label="Inpaint mask"></canvas>
+              <div id="focusEmpty" class="focus-empty-state" hidden>
+                <strong>No visible layer</strong>
+                <span>Use an eye button in Layers to show an image.</span>
+              </div>
             </div>
             <button id="focusMediaStandardButton" class="focus-media-standard" data-focus-action="render-standard" type="button" hidden>Render standard</button>
           </div>
@@ -3632,7 +3650,7 @@ function setFocusZoom(value) {
 function wireFocusZoom(view) {
   const media = view.querySelector('#focusMediaWrap');
   media.addEventListener('wheel', (event) => {
-    if (!state.focus) return;
+    if (!state.focus?.image) return;
     event.preventDefault();
     event.stopPropagation();
     const delta = Math.max(-60, Math.min(60, event.deltaY));
@@ -3650,7 +3668,7 @@ function wireFocusPan(view) {
     stage.classList.remove('is-panning');
   };
   stage.addEventListener('pointerdown', (event) => {
-    if (!state.focus) return;
+    if (!state.focus?.image) return;
     const middleDrag = event.button === 1;
     const toolDrag = event.button === 0 && state.focus.panMode;
     if (!middleDrag && !toolDrag) return;
@@ -3751,7 +3769,8 @@ function setFocusBusy(busy, text = '') {
   state.focusBusy = busy;
   const view = ensureFocusView();
   view.querySelectorAll('[data-focus-action], .generate-button').forEach((button) => {
-    button.disabled = busy;
+    const noMedia = !state.focus?.image;
+    button.disabled = busy || (noMedia && button.dataset.focusAction !== 'back');
   });
   const status = view.querySelector('#focusStatus');
   if (status && text) status.textContent = text;
@@ -3876,7 +3895,7 @@ function renderFocusLayers() {
           <span class="focus-layer-thumb"><img src="${imageUrl(layer.media, 'full')}" alt=""></span>
           <span class="focus-layer-copy"><strong>${escapeHtml(layer.label)}</strong><small>${kindLabel}</small></span>
         </button>
-        <button class="focus-layer-visibility${visible ? '' : ' is-hidden'}" data-focus-layer-visibility="${escapeHtml(layer.id)}" type="button" title="${visible ? 'Hide layer' : 'Show layer'}" aria-label="${visible ? 'Hide' : 'Show'} ${escapeHtml(layer.label)}"${protectedLayer || state.focusBusy ? ' disabled' : ''}><span class="focus-eye-icon" aria-hidden="true"></span></button>
+        <button class="focus-layer-visibility${visible ? '' : ' is-hidden'}" data-focus-layer-visibility="${escapeHtml(layer.id)}" type="button" title="${visible ? 'Hide layer' : 'Show layer'}" aria-label="${visible ? 'Hide' : 'Show'} ${escapeHtml(layer.label)}"${state.focusBusy ? ' disabled' : ''}><span class="focus-eye-icon" aria-hidden="true"></span></button>
         <span class="focus-layer-tools">
           <button class="focus-layer-tool" data-focus-layer-move="up" data-focus-layer-target="${escapeHtml(layer.id)}" type="button" title="Move layer up" aria-label="Move ${escapeHtml(layer.label)} up"${canMoveUp && !state.focusBusy ? '' : ' disabled'}>↑</button>
           <button class="focus-layer-tool" data-focus-layer-move="down" data-focus-layer-target="${escapeHtml(layer.id)}" type="button" title="Move layer down" aria-label="Move ${escapeHtml(layer.label)} down"${canMoveDown && !state.focusBusy ? '' : ' disabled'}>↓</button>
@@ -3944,18 +3963,28 @@ function renderFocusView() {
   const focus = state.focus;
   view.hidden = !focus;
   if (!focus) return;
-  const videoFocus = isVideo(focus.image);
+  const hasMedia = Boolean(focus.image && mediaUrl(focus.image));
+  const videoFocus = hasMedia && isVideo(focus.image);
+  view.classList.toggle('no-focus-media', !hasMedia);
   view.classList.toggle('video-focus', videoFocus);
   const title = view.querySelector('#focusTitle');
   if (!title.isContentEditable) title.textContent = focus.label || (videoFocus ? 'Video' : 'Image');
-  view.querySelector('#focusMeta').textContent = focus.image?.video_name || focus.image?.image_name || 'Ready';
+  view.querySelector('#focusMeta').textContent = focus.image?.video_name || focus.image?.image_name || 'All layers hidden';
   view.querySelector('#focusZoom').textContent = `${Math.round((focus.zoom || 1) * 100)}%`;
   const img = view.querySelector('#focusImage');
   const video = view.querySelector('#focusVideo');
   const wrap = view.querySelector('#focusMediaWrap');
-  img.hidden = videoFocus;
-  video.hidden = !videoFocus;
-  if (videoFocus) {
+  const empty = view.querySelector('#focusEmpty');
+  img.hidden = !hasMedia || videoFocus;
+  video.hidden = !hasMedia || !videoFocus;
+  empty.hidden = hasMedia;
+  if (!hasMedia) {
+    img.removeAttribute('src');
+    video.pause();
+    video.removeAttribute('src');
+    wrap.style.width = '280px';
+    wrap.style.height = '160px';
+  } else if (videoFocus) {
     if (video.src !== mediaUrl(focus.image)) video.src = mediaUrl(focus.image);
     wrap.style.width = 'min(92%, 1100px)';
     wrap.style.height = 'auto';
@@ -3971,16 +4000,16 @@ function renderFocusView() {
   const panButton = view.querySelector('#focusPanButton');
   panButton.classList.toggle('active', Boolean(focus.panMode));
   panButton.setAttribute('aria-pressed', String(Boolean(focus.panMode)));
-  view.querySelectorAll('[data-image-only]').forEach((button) => { button.hidden = videoFocus; });
+  view.querySelectorAll('[data-image-only]').forEach((element) => { element.hidden = videoFocus; });
   view.querySelector('[data-focus-action="mode-direct"]')?.classList.toggle('active', focus.mode !== 'inpaint');
   view.querySelector('[data-focus-action="mode-inpaint"]')?.classList.toggle('active', focus.mode === 'inpaint');
-  view.querySelector('.focus-mask-tools').hidden = focus.mode !== 'inpaint' || videoFocus;
-  view.querySelector('#focusMask').hidden = focus.mode !== 'inpaint' || videoFocus;
+  view.querySelector('.focus-mask-tools').hidden = !hasMedia || focus.mode !== 'inpaint' || videoFocus;
+  view.querySelector('#focusMask').hidden = !hasMedia || focus.mode !== 'inpaint' || videoFocus;
   renderFocusLayers();
   renderFocusReferences();
   const activeLayer = activeFocusLayer();
   view.querySelectorAll('#focusStandardButton, #focusMediaStandardButton').forEach((button) => {
-    button.hidden = videoFocus || activeLayer?.kind !== 'preview';
+    button.hidden = !hasMedia || videoFocus || activeLayer?.kind !== 'preview';
   });
   renderFocusVariants();
   setFocusBusy(state.focusBusy);

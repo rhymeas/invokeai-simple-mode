@@ -1,12 +1,14 @@
-# InvokeAI Simple Mode v1.6.1
+# InvokeAI Simple Mode v1.6.2
 
-This patch release makes Focus Edit layer visibility immediate and keeps previews from cropping source images. The eye control is now directly available on the right side of every layer row; showing a hidden layer also switches the canvas to it without selecting the row.
+This patch release fixes the last Focus Edit visibility edge case and improves recovery when InvokeAI is not running.
 
-The preview surfaces use the full image bounds, and the specialized node generation fixes from v1.6.0 remain included.
+The protected original layer can now be hidden and shown with its eye control. If every layer is hidden, Focus Edit displays a clear empty state and disables image actions until a layer is restored. Hidden state persists when the view is closed and reopened.
+
+When InvokeAI is offline, Simple Mode now shows a clear instruction to start InvokeAI instead of exposing a raw Windows connection error.
 
 ## Important
 
-- Windows 10/11 only for v1.6.1.
+- Windows 10/11 only for v1.6.2.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.
