@@ -1180,7 +1180,7 @@ def ensure_generation_queue_idle():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "InvokeSimpleMode/1.6.2"
+    server_version = "InvokeSimpleMode/1.7.0"
 
     def log_message(self, fmt, *args):
         return

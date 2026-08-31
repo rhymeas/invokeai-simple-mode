@@ -644,6 +644,7 @@ textarea {
     #070a0f;
   background-size: 28px 28px;
   cursor: grab;
+  outline: none;
 }
 
 .canvas-viewport.drag-over {

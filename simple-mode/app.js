@@ -37,6 +37,8 @@ const state = {
   globalTokenDrag: null,
   slotDrag: null,
   slotPointerDrag: null,
+  canvasPasteArmed: false,
+  canvasPasteAnchor: null,
   suspendAutosave: true,
   workspace: {
     id: null,
@@ -922,7 +924,7 @@ function revokePendingPreview(image) {
   }
 }
 
-function setPendingPreview(slot, file) {
+function setPendingPreview(slot, file, position = null) {
   revokePendingPreview(state.images[slot]);
   const previewUrl = URL.createObjectURL(file);
   const pendingImage = {
@@ -937,7 +939,7 @@ function setPendingPreview(slot, file) {
   };
   state.images[slot] = pendingImage;
   setSlotPreview(slot, pendingImage);
-  upsertNode(slot);
+  upsertNode(slot, position);
   renderTokens();
   renderCanvas();
 }
@@ -1234,11 +1236,20 @@ function connectSlotToSimpleBlocks(slot) {
     .forEach((block) => addEdge(imageEndpoint(slot), blockEndpoint(block.id)));
 }
 
-function upsertNode(slot) {
+function upsertNode(slot, position = null) {
   if (!state.images[slot]) return;
   let node = state.nodes.find((item) => item.slot === slot);
   if (!node) {
-    node = { slot, ...defaultPositions[slot] };
+    if (position) {
+      const size = slotSize(slot);
+      node = {
+        slot,
+        x: Math.max(16, position.x - size.w / 2),
+        y: Math.max(16, position.y - size.h / 2),
+      };
+    } else {
+      node = { slot, ...defaultPositions[slot] };
+    }
     state.nodes.push(node);
   }
   setSelection([imageEndpoint(slot)]);
@@ -2480,11 +2491,11 @@ function uploadWithProgress(slot, file) {
   });
 }
 
-async function uploadFile(slot, file) {
+async function uploadFile(slot, file, position = null) {
   if (!file.type.startsWith('image/')) {
     throw new Error(`${file.name} is not an image.`);
   }
-  setPendingPreview(slot, file);
+  setPendingPreview(slot, file, position);
   setSlotProgress(slot, `Preparing ${labelFor(slot)}`, 8);
   setUploadStatus(`Preparing ${labelFor(slot)}...`, 'busy');
   try {
@@ -2504,18 +2515,49 @@ async function uploadFile(slot, file) {
   }
 }
 
-async function uploadFiles(startSlot, fileList) {
+async function uploadFiles(startSlot, fileList, position = null) {
   const files = Array.from(fileList || []).filter((file) => file.type.startsWith('image/'));
   if (!files.length) return;
   let next = typeof startSlot === 'number' ? startSlot : firstEmptySlot(0);
-  for (const file of files) {
+  for (const [index, file] of files.entries()) {
     if (next < 0) {
       setUploadStatus('All five image slots are already filled.', 'error');
       return;
     }
-    await uploadFile(next, file);
+    const nodePosition = position ? { x: position.x + index * 32, y: position.y + index * 32 } : null;
+    await uploadFile(next, file, nodePosition);
     next = firstEmptySlot(next + 1);
   }
+}
+
+function isTextPasteTarget(target) {
+  const element = target instanceof Element ? target : target?.parentElement;
+  return Boolean(element?.closest?.('input, textarea, select, [contenteditable="true"]'));
+}
+
+function clipboardImageFiles(clipboardData) {
+  const itemFiles = Array.from(clipboardData?.items || [])
+    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter(Boolean);
+  if (itemFiles.length) return itemFiles;
+  return Array.from(clipboardData?.files || []).filter((file) => file.type.startsWith('image/'));
+}
+
+async function pasteImagesOnCanvas(event) {
+  if (!state.canvasPasteArmed || state.focus || isTextPasteTarget(event.target)) return;
+  const files = clipboardImageFiles(event.clipboardData);
+  if (!files.length) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const rect = canvasViewport.getBoundingClientRect();
+  const position = state.canvasPasteAnchor || screenToWorld(
+    rect.left + rect.width / 2,
+    rect.top + rect.height / 2,
+  );
+  try {
+    await uploadFiles(firstEmptySlot(0), files, position);
+  } catch (_) {}
 }
 
 function clearSlotDragState() {
@@ -4466,6 +4508,11 @@ function wireCanvas() {
     finalizeMarqueeSelection();
   }, true);
   canvasViewport.addEventListener('pointerdown', (event) => {
+    if (event.button === 0 && !event.target.closest('button, input, textarea, select, [contenteditable="true"]')) {
+      state.canvasPasteAnchor = screenToWorld(event.clientX, event.clientY);
+      state.canvasPasteArmed = true;
+      canvasViewport.focus({ preventScroll: true });
+    }
     if (event.target.closest('.canvas-node')
       || event.target.closest('.workflow-block')
       || event.target.closest('.canvas-output-node')
@@ -5270,6 +5317,7 @@ document.addEventListener('keydown', (event) => {
   event.preventDefault();
   deleteCanvasEndpoints();
 });
+document.addEventListener('paste', pasteImagesOnCanvas);
 generateButton.addEventListener('click', generate);
 workspaceSelect.addEventListener('change', async () => {
   try {
@@ -5300,6 +5348,7 @@ window.addEventListener('pagehide', () => {
 });
 
 document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest('#canvasViewport')) state.canvasPasteArmed = false;
   if (!event.target.closest('.modern-select')) closeModernSelect();
 }, true);
 document.addEventListener('keydown', (event) => {

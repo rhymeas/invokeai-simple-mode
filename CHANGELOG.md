@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0 - 2026-08-31
+
+- Added clipboard image paste after clicking the canvas with `Ctrl+V` on Windows or `Cmd+V` on macOS.
+- Positioned pasted image nodes around the last clicked canvas point and cascaded multiple clipboard images without overlap.
+- Preserved normal text paste behavior in prompts, search fields, workspace names, and editable image names.
+
 ## 1.6.2 - 2026-08-28
 
 - Enabled visibility controls for the protected original Focus Edit layer while keeping its delete and reorder actions locked.

@@ -1,14 +1,14 @@
-# InvokeAI Simple Mode v1.6.2
+# InvokeAI Simple Mode v1.7.0
 
-This patch release fixes the last Focus Edit visibility edge case and improves recovery when InvokeAI is not running.
+This release adds direct clipboard image paste to the node canvas.
 
-The protected original layer can now be hidden and shown with its eye control. If every layer is hidden, Focus Edit displays a clear empty state and disables image actions until a layer is restored. Hidden state persists when the view is closed and reopened.
+Click a free canvas position, then press `Ctrl+V` on Windows or `Cmd+V` on macOS. Clipboard images upload through the same InvokeAI path as drag and drop, become selected image nodes, and appear around the clicked position. Multiple images are cascaded so they remain individually accessible.
 
-When InvokeAI is offline, Simple Mode now shows a clear instruction to start InvokeAI instead of exposing a raw Windows connection error.
+Paste remains context-aware: text fields, prompt editors, search fields, workspace names, and editable image names retain normal text-paste behavior.
 
 ## Important
 
-- Windows 10/11 only for v1.6.2.
+- Windows 10/11 only for v1.7.0.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.

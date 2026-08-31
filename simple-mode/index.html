@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>InvokeAI Simple Mode</title>
     <link rel="icon" href="/icon-source" />
-    <link rel="stylesheet" href="/styles.css?v=focus-canvas-1.6.2" />
+    <link rel="stylesheet" href="/styles.css?v=focus-canvas-1.7.0" />
   </head>
   <body>
     <main class="app-shell">
@@ -69,7 +69,7 @@
               <button id="openBlocks" type="button">Blocks</button>
             </div>
           </div>
-          <div id="canvasViewport" class="canvas-viewport">
+          <div id="canvasViewport" class="canvas-viewport" tabindex="0" aria-label="Canvas">
             <input id="canvasUpload" class="canvas-upload-input" type="file" accept="image/*" multiple />
             <button id="canvasAddNode" class="canvas-add-node" type="button" title="Add node" aria-label="Add node">+</button>
             <div id="blockMenu" class="block-menu" hidden>
@@ -161,6 +161,6 @@
       </section>
     </main>
 
-    <script src="/app.js?v=focus-canvas-1.6.2"></script>
+    <script src="/app.js?v=focus-canvas-1.7.0"></script>
   </body>
 </html>
