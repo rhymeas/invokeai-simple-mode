@@ -56,13 +56,40 @@ def ensure_native_navigation():
     return True
 
 ROLE_GUIDANCE = {
-    "style": "Borrow visual style, render language, mood, texture, lens feel, and finish. Do not copy layout unless the user asks.",
+    "style": "Borrow visual style, render language, mood, texture, lens feel, and finish while retaining the main image layout unless the user changes it.",
     "brand": "Borrow brand system: colors, logos, typography, signage, graphic shapes, and visual identity cues.",
     "object": "Borrow the referenced object or subject details: silhouette, proportions, materials, pose, and recognizable features.",
     "lighting": "Borrow lighting direction, contrast, color temperature, shadow softness, reflections, and atmosphere.",
     "composition": "Borrow framing, camera distance, spatial layout, perspective, negative space, and subject placement.",
-    "extra": "Use only the specifically described details from this reference; avoid drifting from the main image.",
+    "extra": "Use only the specifically described details from this reference and retain the main image as visual ground truth.",
 }
+
+FLUX_PROMPT_EXPANSION_SYSTEM = """You are a constrained prompt compiler for FLUX.2 Klein image generation and editing.
+Return only one concise natural-language image prompt of 45 to 90 words.
+Preserve every factual requirement, exact quotation, number, relationship, target, and requested change from the user's input.
+Resolve shorthand, spelling mistakes, and informal grammar by intended meaning without changing the intent.
+Put the most important subject or requested change first. Add only visual details that follow from the request or can be matched from a supplied source image.
+For edits, describe the smallest coherent change and preserve unrequested composition, identity, geometry, branding, typography, lighting, materials, colors, and background.
+Never invent additional subjects, objects, logos, wording, styles, camera models, or lenses.
+Never add generic quality phrases such as masterpiece, best quality, 8K, stunning, cinematic, or ultra-detailed unless the user explicitly requested that exact treatment.
+Use concrete positive visual language instead of a negative-prompt list."""
+
+PROMPT_SIGNAL_TERMS = {
+    "remove": ("remove", "erase", "delete", "without", "entferne", "entfernen", "lösche", "loesche", "wegmachen"),
+    "replace": ("replace", "swap", "instead of", "change into", "turn into", "ersetze", "ersetzen", "anstatt", "stattdessen"),
+    "add": ("add", "insert", "include", "place", "put ", "füge", "fuege", "hinzufügen", "hinzufuegen", "ergänze", "ergaenze"),
+    "camera": ("camera", "view", "angle", "framing", "perspective", "lens", "shot", "kamera", "ansicht", "blickwinkel", "perspektive"),
+    "geometry": ("round", "rounded", "corner", "curve", "shape", "geometry", "silhouette", "proportion", "larger", "smaller", "rund", "ecke", "kante", "kurve", "form", "geometrie", "größer", "groesser", "kleiner"),
+    "typography": ("text", "word", "letter", "font", "typeface", "typography", "logo", "signage", "schrift", "wort", "buchstabe", "typografie", "beschriftung"),
+    "color": ("color", "colour", "palette", "hue", "saturation", "contrast", "hex", "red", "blue", "green", "yellow", "orange", "purple", "pink", "black", "white", "gray", "grey", "cyan", "magenta", "teal", "gold", "silver", "farbe", "farbton", "sättigung", "saettigung", "kontrast", "rot", "blau", "grün", "gruen", "gelb", "lila", "rosa", "schwarz", "weiß", "weiss", "grau", "golden", "silber"),
+    "lighting": ("light", "lighting", "shadow", "reflection", "exposure", "glow", "bright", "dark", "licht", "beleuchtung", "schatten", "reflexion", "belichtung", "hell", "dunkel"),
+    "material": ("material", "texture", "surface", "finish", "fabric", "metal", "glass", "wood", "plastic", "textur", "oberfläche", "oberflaeche", "stoff", "metall", "glas", "holz", "kunststoff"),
+    "identity": ("person", "face", "character", "identity", "expression", "pose", "outfit", "mensch", "gesicht", "figur", "identität", "identitaet", "ausdruck", "kleidung"),
+    "style": ("style", "mood", "aesthetic", "render", "photo", "illustration", "design", "stil", "stimmung", "ästhetik", "aesthetik", "foto", "zeichnung"),
+}
+
+PROMPT_EXPANSION_LOCK = threading.RLock()
+PROMPT_EXPANSION_CACHE = {}
 
 OPENAPI_CACHE = None
 NATIVE_GROUP_ORDER = [
@@ -854,7 +881,133 @@ def dimensions_for(aspect, source_image, preview_size=None):
     return width, height
 
 
-def build_prompt(prompt, images, connections=None, generation_profile=None):
+def detect_prompt_signals(prompt):
+    text = str(prompt or "").casefold()
+
+    def contains(term):
+        term = str(term).strip().casefold()
+        return bool(term and re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text))
+
+    return [
+        signal
+        for signal, terms in PROMPT_SIGNAL_TERMS.items()
+        if any(contains(term) for term in terms)
+    ]
+
+
+def flux_execution_guidance(prompt, images, generation_profile=None):
+    signals = detect_prompt_signals(prompt)
+    guidance = [
+        "Interpret shorthand, spelling mistakes, and informal phrasing by intended visual meaning while keeping every named subject, object, relationship, quantity, color, and quoted word exact.",
+    ]
+    if images:
+        guidance.append(
+            "Use image 1 as visual ground truth. Apply the smallest coherent change that fully satisfies the request, while retaining all unrequested framing, crop, camera, perspective, subject identity, object placement, branding, typography, lighting, materials, colors, and background."
+        )
+        guidance.append(
+            "Integrate changed areas into the source with consistent scale, perspective, edges, occlusion, shadows, reflections, texture, sharpness, and image grain."
+        )
+    else:
+        guidance.append(
+            "Describe the requested subject and action first, followed by only the explicitly supplied composition, environment, lighting, material, color, and style details."
+        )
+
+    signal_guidance = {
+        "remove": "Remove the named target completely and reconstruct the newly exposed background with continuous geometry, texture, lighting, and perspective.",
+        "replace": "Replace only the named target and integrate the replacement at the same intended position, scale, perspective, and lighting unless the request states otherwise.",
+        "add": "Place the requested addition with plausible scale, perspective, contact, occlusion, lighting, and shadows relative to the existing scene.",
+        "camera": "Treat camera position, viewing direction, framing, and perspective as explicit spatial constraints while maintaining scene and identity continuity.",
+        "geometry": "Resolve the requested geometry with continuous surfaces, plausible thickness, clean joins, correct intersections, and matching material response.",
+        "typography": "Render requested wording exactly as written, preserving capitalization, punctuation, logo identity, letter order, alignment, and legibility.",
+        "color": "Attach each requested color to its named object or region and preserve coherent value contrast, material response, and reflected color.",
+        "lighting": "Apply the requested light direction, softness, exposure, shadow, reflection, and color temperature consistently across affected surfaces.",
+        "material": "Express the requested material through physically coherent texture scale, roughness, reflectivity, translucency, wear, seams, and edge response.",
+        "identity": "Preserve recognizable identity, anatomy, proportions, clothing continuity, and pose unless the request explicitly changes one of them.",
+        "style": "Apply the requested visual language consistently through medium, texture, color treatment, contrast, and finish while preserving factual scene content.",
+    }
+    guidance.extend(signal_guidance[signal] for signal in signals[:4] if signal in signal_guidance)
+
+    if isinstance(generation_profile, dict) and generation_profile.get("kind"):
+        guidance.append("Treat the selected node mode and controls as production constraints rather than optional style suggestions.")
+    return guidance
+
+
+def choose_prompt_expansion_model():
+    models = invoke_json("/api/v2/models/?with_config=true", timeout=10).get("models") or []
+    compatible = [model for model in models if str(model.get("type") or "").lower() == "text_llm"]
+    if not compatible:
+        return None
+
+    def preference(model):
+        name = str(model.get("name") or "").casefold()
+        if "qwen2.5" in name and "3b" in name:
+            return 0
+        if "qwen2.5" in name and "1.5b" in name:
+            return 1
+        if "smollm" in name:
+            return 2
+        return 3
+
+    return sorted(compatible, key=preference)[0]
+
+
+def queue_is_idle():
+    try:
+        status = invoke_json("/api/v1/queue/default/status", timeout=5) or {}
+        queue = status.get("queue") or {}
+        processor = status.get("processor") or {}
+        return not (
+            int(queue.get("pending") or 0)
+            or int(queue.get("in_progress") or 0)
+            or processor.get("is_processing")
+        )
+    except Exception:
+        return False
+
+
+def expand_prompt_locally(prompt, images, generation_profile=None):
+    words = str(prompt or "").split()
+    if not words or len(words) > 32 or len(images) > 3 or isinstance(generation_profile, dict):
+        return None, None
+    if str(prompt).lstrip().startswith(("{", "[")) or not queue_is_idle():
+        return None, None
+    try:
+        model = choose_prompt_expansion_model()
+    except Exception:
+        return None, None
+    if not model:
+        return None, None
+
+    cache_key = (str(model.get("key")), str(prompt).strip(), bool(images))
+    with PROMPT_EXPANSION_LOCK:
+        cached = PROMPT_EXPANSION_CACHE.get(cache_key)
+        if cached:
+            return cached, model
+        try:
+            response = invoke_json(
+                "/api/v1/utilities/expand-prompt",
+                method="POST",
+                payload={
+                    "prompt": str(prompt).strip(),
+                    "model_key": model["key"],
+                    "max_tokens": 160,
+                    "system_prompt": FLUX_PROMPT_EXPANSION_SYSTEM,
+                    "seed": 0,
+                },
+                timeout=180,
+            ) or {}
+            expanded = " ".join(str(response.get("expanded_prompt") or "").split()).strip()
+            if not expanded or expanded.casefold() == str(prompt).strip().casefold():
+                return None, model
+            if len(PROMPT_EXPANSION_CACHE) >= 128:
+                PROMPT_EXPANSION_CACHE.pop(next(iter(PROMPT_EXPANSION_CACHE)))
+            PROMPT_EXPANSION_CACHE[cache_key] = expanded
+            return expanded, model
+        except Exception:
+            return None, model
+
+
+def build_prompt(prompt, images, connections=None, generation_profile=None, expanded_prompt=None):
     slot_to_input = {
         int(image.get("slot", index - 1)) + 1: index
         for index, image in enumerate(images, start=1)
@@ -865,11 +1018,11 @@ def build_prompt(prompt, images, connections=None, generation_profile=None):
         return f"image {slot_to_input.get(ui_slot, ui_slot)}"
 
     primary_instruction = re.sub(r"@(\d+)", replace_reference_token, prompt.strip())
-    lines = ["PRIMARY EDIT INSTRUCTION:", primary_instruction]
+    lines = ["AUTHORITATIVE USER REQUEST:", primary_instruction]
     if images:
         lines.append("")
         lines.append("IMAGE INPUTS:")
-        lines.append("Image 1 is the main image to edit.")
+        lines.append("Image 1 is the main visual source and primary composition.")
         for input_index, image in enumerate(images[1:], start=2):
             role = image.get("role") or "reference"
             note = image.get("note") or ""
@@ -878,12 +1031,10 @@ def build_prompt(prompt, images, connections=None, generation_profile=None):
                 lines.append(f"Image {input_index} serves as the {role} reference. {role_instruction} Apply this note: {note}")
             else:
                 lines.append(f"Image {input_index} serves as the {role} reference. {role_instruction}")
+    if expanded_prompt:
         lines.append("")
-        lines.append("Follow the primary instruction exactly. Preserve all unmentioned content from image 1 unless the instruction explicitly requests a broader redesign.")
-    if connections:
-        lines.append("")
-        lines.append("WORKFLOW CONNECTIONS:")
-        lines.extend(f"- {str(connection).strip()}" for connection in connections if str(connection).strip())
+        lines.append("CONSTRAINED VISUAL INTERPRETATION:")
+        lines.append(re.sub(r"@(\d+)", replace_reference_token, expanded_prompt))
     if isinstance(generation_profile, dict):
         node_kind = str(generation_profile.get("kind") or "workflow").strip()
         settings = generation_profile.get("settings")
@@ -896,14 +1047,21 @@ def build_prompt(prompt, images, connections=None, generation_profile=None):
                     continue
                 label = str(key).replace("_", " ")
                 lines.append(f"- {label}: {value}")
+    lines.append("")
+    lines.append("FLUX.2 EXECUTION GUIDANCE:")
+    lines.extend(f"- {item}" for item in flux_execution_guidance(prompt, images, generation_profile))
+    if connections:
+        lines.append("")
+        lines.append("WORKFLOW CONNECTIONS:")
+        lines.extend(f"- {str(connection).strip()}" for connection in connections if str(connection).strip())
     return "\n".join(lines)
 
 
-def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None, preview_size=None, model_key=None, generation_profile=None):
+def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None, preview_size=None, model_key=None, generation_profile=None, expanded_prompt=None):
     main_model, qwen_model, vae_model = choose_models(model_key)
     source_image = next((image for image in images if image), None)
     width, height = dimensions_for(aspect, source_image, preview_size)
-    prompt_text = build_prompt(prompt, images, connections, generation_profile)
+    prompt_text = build_prompt(prompt, images, connections, generation_profile, expanded_prompt)
     image_fields = [{"image_name": image["image_name"]} for image in images if image.get("image_name")]
     guidance = 3.5 if mode == "draft" else 4.0
 
@@ -1180,7 +1338,7 @@ def ensure_generation_queue_idle():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "InvokeSimpleMode/1.7.0"
+    server_version = "InvokeSimpleMode/1.8.0"
 
     def log_message(self, fmt, *args):
         return
@@ -1522,12 +1680,13 @@ class Handler(BaseHTTPRequestHandler):
         else:
             base_seed = int(base_seed)
 
+        expanded_prompt, prompt_expander = expand_prompt_locally(prompt, images, generation_profile)
         item_ids = []
         for index in range(count):
             seed = (base_seed + index * 9973) % 4294967295
             graph = build_graph(
                 images, prompt, aspect, steps, seed, connections, mode, mask_image_name, preview_size,
-                model_key=model_key, generation_profile=generation_profile,
+                model_key=model_key, generation_profile=generation_profile, expanded_prompt=expanded_prompt,
             )
             body = {
                 "batch": {
@@ -1542,7 +1701,16 @@ class Handler(BaseHTTPRequestHandler):
             response = invoke_json("/api/v1/queue/default/enqueue_batch", method="POST", payload=body, timeout=30)
             item_ids.extend(response.get("item_ids") or [])
 
-        self.send_json({"item_ids": item_ids, "seed": base_seed, "preview_size": preview_size})
+        self.send_json({
+            "item_ids": item_ids,
+            "seed": base_seed,
+            "preview_size": preview_size,
+            "prompt_enhancement": {
+                "structured": True,
+                "local_llm": bool(expanded_prompt),
+                "model": prompt_expander.get("name") if prompt_expander and expanded_prompt else None,
+            },
+        })
 
     def handle_video_generate(self):
         payload = self.read_json()

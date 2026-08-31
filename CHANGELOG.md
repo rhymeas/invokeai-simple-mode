@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0 - 2026-08-31
+
+- Added an automatic FLUX.2 prompt compiler behind every image generation path while keeping the visible user prompt unchanged.
+- Preserved the original request as the highest-priority instruction and added targeted guidance for removals, replacements, additions, geometry, typography, color, lighting, materials, camera changes, identity, and style.
+- Reordered prompt context around authoritative intent, actual image-reference order, hard node controls, execution guidance, and workflow connections.
+- Added optional InvokeAI `Text LLM` expansion for short prompts only when a compatible local model is installed and the render queue is idle.
+- Added deterministic fallback behavior with no extra model or VRAM requirement, plus automated prompt-compiler coverage.
+
 ## 1.7.0 - 2026-08-31
 
 - Added clipboard image paste after clicking the canvas with `Ctrl+V` on Windows or `Cmd+V` on macOS.

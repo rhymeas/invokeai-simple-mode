@@ -2,12 +2,13 @@
 
 An unofficial community interface for InvokeAI with an open node canvas, image and video generation, direct editing, multi-reference prompts, sequential variants, focus inpainting, upscaling, download, workspaces, and access to native InvokeAI actions.
 
-Version **1.7.0** is a Windows release tested with **InvokeAI 6.14.0**, **FLUX.2 Klein 9B and 4B**, and **Wan 2.2 TI2V-5B Q4**.
+Version **1.8.0** is a Windows release tested with **InvokeAI 6.14.0**, **FLUX.2 Klein 9B and 4B**, and **Wan 2.2 TI2V-5B Q4**.
 
 ## Highlights
 
 - Infinite pan and zoom canvas with movable image, action, and result nodes
 - Clipboard image paste at the clicked canvas position with `Ctrl+V` or `Cmd+V`
+- Invisible FLUX.2 prompt compiler that turns shorthand into precise, reference-aware execution guidance
 - Compact fit-to-view canvas layout with side-aware, stable connectors
 - Main image plus up to four ordered references
 - Drag, drop, connect, disconnect, reorder, and `@1` / `@2` prompt references
@@ -40,7 +41,7 @@ Model weights are not included. FLUX.2 Klein 9B is separately licensed by Black 
 ## Install
 
 1. Install and run the official [InvokeAI](https://github.com/invoke-ai/InvokeAI) release once.
-2. Download and extract `InvokeAI-Simple-Mode-v1.7.0.zip` from this project's Releases page.
+2. Download and extract `InvokeAI-Simple-Mode-v1.8.0.zip` from this project's Releases page.
 3. Open PowerShell in the extracted folder.
 4. Run:
 
@@ -61,6 +62,8 @@ powershell -ExecutionPolicy Bypass -File .\Install.ps1 -InvokeRoot "D:\AI\invoke
 Launch **InvokeAI Simple Mode** from the Start Menu or desktop. `Start` loads InvokeAI and opens Simple Mode at `http://127.0.0.1:9091`. `Invoke` opens the native interface at `http://127.0.0.1:9090`.
 
 To add an image from the clipboard, click the canvas where the new image node should appear, then press `Ctrl+V` on Windows or `Cmd+V` on macOS. Paste in prompt, search, and name fields continues to insert text normally.
+
+Prompts may remain short and informal. Before each image job, the backend keeps the original request authoritative, resolves shorthand by intended visual meaning, maps references to their actual input order, and adds only the execution guidance relevant to the requested geometry, text, color, lighting, material, camera, identity, addition, replacement, or removal. Unrequested source-image content is preserved. Generic quality-token padding is not added. If an InvokeAI `Text LLM` is installed later, short prompts also receive a constrained local expansion while the render queue is idle; the structured compiler remains the fallback and adds no extra VRAM load.
 
 For precise edits, identify the target and desired geometry explicitly:
 
@@ -83,7 +86,7 @@ Add a **Video** node for text-to-video, or connect an image first for image-to-v
 
 ## Compatibility
 
-The v1.7.0 generation graphs target InvokeAI 6.14.0's FLUX.2 Klein and Wan 2.2 nodes. Specialized node controls are included in the generation request and prompt context; native InvokeAI actions are discovered at runtime. InvokeAI updates may change node schemas; install newer versions with `-Force` only for testing.
+The v1.8.0 generation graphs target InvokeAI 6.14.0's FLUX.2 Klein and Wan 2.2 nodes. Specialized node controls are included in the generation request and prompt context; native InvokeAI actions are discovered at runtime. InvokeAI updates may change node schemas; install newer versions with `-Force` only for testing.
 
 HiDream is optional and is not bundled. The launcher can switch to a separately installed HiDream O1 Dev web app, but HiDream output is not yet a native Simple Mode node.
 
