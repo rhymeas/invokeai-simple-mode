@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.9.0 - 2026-09-03
+
+- Made Extract contextual: color palettes are measured from the connected source and material/part sheets use true source-derived crops with spatial instruction filtering.
+- Added a material study flow that identifies physical materials with a local vision model, reconstructs true macro views with FLUX, and composes a readable labeled report.
+- Kept vision analysis VRAM-safe by requiring an idle render queue and unloading the model cache immediately after analysis.
+- Made Extract buttons target-aware and wired the node directly to the new reference endpoints.
+
 ## 1.8.0 - 2026-08-31
 
 - Added an automatic FLUX.2 prompt compiler behind every image generation path while keeping the visible user prompt unchanged.

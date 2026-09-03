@@ -606,8 +606,8 @@ const blockDefaults = {
   extract: {
     title: 'Extract',
     icon: '▱',
-    prompt: 'Extract the key visual language from @1 as a clean reusable reference: shapes, materials, lighting, color palette, and composition rules.',
-    hint: 'Describe what should be extracted',
+    prompt: '',
+    hint: 'Optionally limit the source region',
   },
   animate: {
     title: 'Video',
@@ -1926,6 +1926,11 @@ function renderNewViewBlockBody(block) {
 
 function renderExtractBlockBody(block) {
   const settings = ensureSpecializedSettings(block);
+  const runLabel = {
+    color: 'Extract source palette',
+    material: 'Analyze material close-ups',
+    parts: 'Extract source parts',
+  }[settings.target] || 'Extract reference';
   return `
     <div class="workflow-body specialized-body extract-body">
       <div class="block-token-row">${renderBlockTokens(block)}</div>
@@ -1937,9 +1942,8 @@ function renderExtractBlockBody(block) {
           ['hierarchy', 'Hierarchy'], ['dominant', 'Dominant'], ['detailed', 'Detailed'],
         ], settings.sample)}</select></label>
       </div>
-      ${specializedQualityFields(settings, [['1', '1 sheet'], ['2', '2 sheets']])}
       ${specializedPromptEditor(block)}
-      <button class="run-block specialized-run full" type="button">Extract reference</button>
+      <button class="run-block specialized-run full" type="button">${runLabel}</button>
     </div>
   `;
 }
@@ -2797,10 +2801,34 @@ async function pollItem(id) {
   const card = document.querySelector(`.result-card[data-item-id="${id}"]`);
   const response = await fetch(`/api/item/${id}`);
   const item = await response.json();
-  const media = item.media || item.video || item.image;
+  let media = item.media || item.video || item.image;
   if (item.status === 'completed' && media) {
     const output = state.outputs.find((entry) => String(entry.itemId) === String(id));
     if (output) {
+      if (output.materialStudy && !output.materialStudy.finalized && media.image_name) {
+        output.status = 'processing';
+        requestCanvasRender();
+        setUploadStatus('Composing the detailed material report...', 'busy');
+        try {
+          const reportResponse = await fetch('/api/material-report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              macro_image_name: media.image_name,
+              source_image_name: output.materialStudy.sourceImageName,
+              materials: output.materialStudy.materials,
+            }),
+          });
+          const report = await reportResponse.json();
+          if (!reportResponse.ok) throw new Error(report.error || 'Material report composition failed.');
+          media = report.image;
+          output.materialStudy.finalized = true;
+          setUploadStatus('Detailed material study ready.');
+        } catch (error) {
+          output.materialStudy.finalized = 'failed';
+          setUploadStatus(`Macro study ready, but labels could not be composed: ${error.message}`, 'error');
+        }
+      }
       output.status = 'completed';
       output.image = media;
       addOutputToFocusHistory(output);
@@ -3014,6 +3042,10 @@ async function generateFromBlock(blockId) {
     await submitVideoGeneration(block);
     return;
   }
+  if (block.kind === 'extract') {
+    await submitExtractReference(block);
+    return;
+  }
   if (block.nativeFeature) {
     await runNativeBlock(blockId);
     return;
@@ -3027,6 +3059,115 @@ async function generateFromBlock(blockId) {
     extraPayload: profile.extraPayload,
     generationProfile: profile.generationProfile,
   });
+}
+
+async function submitExtractReference(block) {
+  const settings = ensureSpecializedSettings(block);
+  const source = collectImagesForBlock(block)[0];
+  if (!source?.image_name) {
+    setUploadStatus('Connect a source image to the Extract node first.', 'error');
+    return;
+  }
+  if (settings.target === 'material') {
+    await submitMaterialStudy(block, source, settings);
+    return;
+  }
+  const targetLabel = {
+    color: 'Palette',
+    material: 'Materials',
+    parts: 'Parts',
+  }[settings.target] || 'Extract';
+  setBusy(true);
+  setUploadStatus(`Extracting ${targetLabel.toLowerCase()} from the connected source...`, 'busy');
+  try {
+    const response = await fetch('/api/extract-reference', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_name: source.image_name,
+        target: settings.target,
+        sample: settings.sample,
+        instruction: (block.prompt || '').trim(),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Contextual extraction failed.');
+    const sequence = outputSequenceForSource(blockEndpoint(block.id)) + 1;
+    const output = createCompletedOutput(data.image, `${targetLabel} ${sequence}`, blockEndpoint(block.id));
+    output.extraction = data.metadata || {};
+    restoreResultCards();
+    scheduleAutosave();
+    setUploadStatus(`${targetLabel} extracted directly from the connected source image.`);
+  } catch (error) {
+    setUploadStatus(error.message, 'error');
+    alert(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function submitMaterialStudy(block, source, settings) {
+  setBusy(true);
+  setUploadStatus('Identifying the physical materials in the connected image...', 'busy');
+  try {
+    const analysisResponse = await fetch('/api/material-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_name: source.image_name,
+        sample: settings.sample,
+        instruction: (block.prompt || '').trim(),
+      }),
+    });
+    const analysis = await analysisResponse.json();
+    if (!analysisResponse.ok) throw new Error(analysis.error || 'Material analysis failed.');
+    const materials = (analysis.materials || []).slice(0, 4);
+    if (!materials.length) throw new Error('No physical materials could be identified in the source.');
+    const panels = materials.map((material, index) => (
+      `Panel ${index + 1}: ${material.name} at ${material.location}. ${material.observed} ${material.close_up}`
+    ));
+    const prompt = [
+      'Create a professional material-artist macro study as an exact two-by-two grid with thin neutral gutters.',
+      'Use image 1 as the visual source of truth for color, surface character, construction, finish, pattern scale, reflectivity, and wear.',
+      ...panels,
+      'Each panel must be a newly reconstructed true macro view of the physical material alone, not a crop or zoom of the scene.',
+      'Show physically plausible microtexture and fabrication detail at close range while preserving the observed material identity.',
+      'Do not show people, objects, rooms, logos, words, captions, signs, interfaces, or decorative labels. Do not invent additional materials.',
+    ].join(' ');
+    setUploadStatus('Material types identified. Queueing the macro reconstruction...', 'busy');
+    await submitGeneration({
+      prompt,
+      images: [source],
+      sourceEndpoint: blockEndpoint(block.id),
+      connections: collectConnectionsForBlock(block),
+      extraPayload: {
+        aspect: '1:1',
+        count: 1,
+        mode: 'pro',
+        steps: Math.max(8, Math.min(12, Number(document.getElementById('steps').value) || 8)),
+        preview_size: 0,
+      },
+      generationProfile: {
+        kind: 'extract-material',
+        settings: { target: 'material', sample: settings.sample },
+        source_policy: 'Image 1 is the only visual source; material analysis is a hard factual constraint.',
+      },
+      outputMeta: {
+        materialStudy: {
+          materials,
+          sourceImageName: source.image_name,
+          analysisModel: analysis.model || null,
+          finalized: false,
+        },
+      },
+      labelPrefix: 'Material study',
+    });
+  } catch (error) {
+    setUploadStatus(error.message, 'error');
+    alert(error.message);
+  } finally {
+    setBusy(false);
+  }
 }
 
 async function refreshVideoStatus({ render = false } = {}) {

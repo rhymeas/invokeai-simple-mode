@@ -5,6 +5,7 @@ import os
 import random
 import re
 import sys
+import textwrap
 import threading
 import time
 import urllib.error
@@ -16,10 +17,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 try:
-    from PIL import Image, ImageOps
+    from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 except Exception:
     Image = None
+    ImageDraw = None
+    ImageFont = None
     ImageOps = None
+    ImageStat = None
 
 
 ROOT = Path(os.environ.get("INVOKEAI_ROOT", os.path.expanduser("~/invokeai"))).resolve()
@@ -222,6 +226,14 @@ def invoke_json(path, method="GET", payload=None, timeout=30):
         if not body:
             return None
         return json.loads(body.decode("utf-8"))
+
+
+def clear_invoke_model_cache_best_effort():
+    try:
+        invoke_json("/api/v2/models/empty_model_cache", method="POST", timeout=60)
+        return True
+    except Exception:
+        return False
 
 
 def invoke_error_message(error):
@@ -674,6 +686,447 @@ def upload_image_bytes(file_bytes, filename, content_type="image/png", is_interm
         timeout=90,
     )
     return status, normalize_image_payload(json.loads(response.decode("utf-8")))
+
+
+def _image_resample():
+    return Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+
+
+def _atlas_font(size, bold=False):
+    if ImageFont is None:
+        return None
+    candidates = (
+        ("C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf"),
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    )
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size=size)
+        except Exception:
+            continue
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def _source_location_filter(candidates, instruction):
+    text = str(instruction or "").casefold()
+    location = None
+    for key, terms in {
+        "left": ("left", "linke", "links"),
+        "right": ("right", "rechte", "rechts"),
+        "top": ("top", "upper", "oben", "obere"),
+        "bottom": ("bottom", "lower", "unten", "untere"),
+        "center": ("center", "centre", "middle", "mitte", "mittlere"),
+    }.items():
+        if any(term in text for term in terms):
+            location = key
+            break
+    if not location:
+        return candidates
+
+    def matches(candidate):
+        x, y = candidate["center"]
+        if location == "left":
+            return x <= 0.58
+        if location == "right":
+            return x >= 0.42
+        if location == "top":
+            return y <= 0.58
+        if location == "bottom":
+            return y >= 0.42
+        return 0.24 <= x <= 0.76 and 0.24 <= y <= 0.76
+
+    filtered = [candidate for candidate in candidates if matches(candidate)]
+    return filtered if len(filtered) >= 3 else candidates
+
+
+def source_region_samples(source, target="material", sample="hierarchy", instruction=""):
+    """Select diverse, representative source crops without synthesizing pixels."""
+    if Image is None or ImageStat is None:
+        raise RuntimeError("Pillow is required for contextual extraction.")
+    source = ImageOps.exif_transpose(source).convert("RGB")
+    width, height = source.size
+    requested = {
+        "dominant": 4,
+        "hierarchy": 6,
+        "detailed": 8,
+    }.get(str(sample), 6)
+    crop_fraction = 0.20 if target == "material" else 0.34
+    crop_side = max(48, min(width, height, int(min(width, height) * crop_fraction)))
+    x_steps = 7
+    y_steps = 5
+    candidates = []
+    for row in range(y_steps):
+        center_y = int(height * (0.09 + (0.82 * row / max(1, y_steps - 1))))
+        for column in range(x_steps):
+            center_x = int(width * (0.07 + (0.86 * column / max(1, x_steps - 1))))
+            left = max(0, min(width - crop_side, center_x - crop_side // 2))
+            top = max(0, min(height - crop_side, center_y - crop_side // 2))
+            box = (left, top, left + crop_side, top + crop_side)
+            patch = source.crop(box).resize((28, 28), _image_resample())
+            statistics = ImageStat.Stat(patch)
+            mean = statistics.mean[:3]
+            variance = statistics.var[:3]
+            texture = sum(variance) / (3 * 255 * 255)
+            feature = tuple(value / 255 for value in mean) + (min(1.0, texture * 8),)
+            candidates.append({
+                "box": box,
+                "center": (center_x / max(1, width), center_y / max(1, height)),
+                "feature": feature,
+                "texture": texture,
+            })
+    candidates = _source_location_filter(candidates, instruction)
+
+    def distance(first, second):
+        return sum((a - b) ** 2 for a, b in zip(first, second))
+
+    cluster_count = min(requested, len(candidates))
+    overall = tuple(sum(item["feature"][i] for item in candidates) / len(candidates) for i in range(4))
+    first = min(candidates, key=lambda item: distance(item["feature"], overall))
+    centroids = [first["feature"]]
+    while len(centroids) < cluster_count:
+        candidate = max(candidates, key=lambda item: min(distance(item["feature"], center) for center in centroids))
+        centroids.append(candidate["feature"])
+
+    clusters = []
+    for _ in range(8):
+        clusters = [[] for _ in centroids]
+        for candidate in candidates:
+            index = min(range(len(centroids)), key=lambda i: distance(candidate["feature"], centroids[i]))
+            clusters[index].append(candidate)
+        centroids = [
+            tuple(sum(item["feature"][axis] for item in cluster) / len(cluster) for axis in range(4))
+            if cluster else centroids[index]
+            for index, cluster in enumerate(clusters)
+        ]
+
+    representatives = []
+    for index, cluster in enumerate(clusters):
+        if not cluster:
+            continue
+        representative = min(cluster, key=lambda item: distance(item["feature"], centroids[index]))
+        representatives.append((len(cluster), representative["texture"], representative))
+    if sample == "detailed":
+        representatives.sort(key=lambda item: (item[1], item[0]), reverse=True)
+    else:
+        representatives.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [item[2] for item in representatives[:requested]]
+
+
+def _draw_source_preview(board, draw, source, frame, samples=None):
+    x, y, width, height = frame
+    draw.rounded_rectangle((x, y, x + width, y + height), radius=12, fill=(37, 39, 43), outline=(74, 77, 84), width=2)
+    preview = ImageOps.contain(source, (width - 24, height - 24), _image_resample())
+    preview_x = x + (width - preview.width) // 2
+    preview_y = y + (height - preview.height) // 2
+    board.paste(preview, (preview_x, preview_y))
+    if not samples:
+        return
+    scale_x = preview.width / max(1, source.width)
+    scale_y = preview.height / max(1, source.height)
+    colors = ((206, 255, 21), (98, 207, 255), (255, 126, 92), (175, 130, 255), (255, 203, 71), (82, 225, 167), (255, 110, 190), (184, 196, 211))
+    label_font = _atlas_font(18, bold=True)
+    for index, sample in enumerate(samples):
+        left, top, right, bottom = sample["box"]
+        mapped = (
+            preview_x + int(left * scale_x),
+            preview_y + int(top * scale_y),
+            preview_x + int(right * scale_x),
+            preview_y + int(bottom * scale_y),
+        )
+        color = colors[index % len(colors)]
+        draw.rectangle(mapped, outline=color, width=4)
+        draw.rounded_rectangle((mapped[0] + 5, mapped[1] + 5, mapped[0] + 47, mapped[1] + 33), radius=6, fill=color)
+        draw.text((mapped[0] + 14, mapped[1] + 8), f"{index + 1}", fill=(12, 13, 15), font=label_font)
+
+
+def build_region_reference_atlas(source, target="material", sample="hierarchy", instruction=""):
+    source = ImageOps.exif_transpose(source).convert("RGB")
+    samples = source_region_samples(source, target=target, sample=sample, instruction=instruction)
+    board = Image.new("RGB", (1400, 900), (16, 17, 20))
+    draw = ImageDraw.Draw(board)
+    title_font = _atlas_font(34, bold=True)
+    body_font = _atlas_font(20)
+    label_font = _atlas_font(20, bold=True)
+    title = "MATERIALS FROM SOURCE" if target == "material" else "PARTS FROM SOURCE"
+    draw.text((40, 32), title, fill=(244, 245, 247), font=title_font)
+    draw.text((40, 76), "Exact source regions, ordered by visual importance", fill=(161, 166, 176), font=body_font)
+    _draw_source_preview(board, draw, source, (40, 122, 500, 730), samples)
+
+    columns = 3
+    gap = 18
+    start_x = 580
+    start_y = 122
+    cell_width = 247
+    cell_height = 229
+    for index, selected in enumerate(samples):
+        column = index % columns
+        row = index // columns
+        x = start_x + column * (cell_width + gap)
+        y = start_y + row * (cell_height + gap)
+        draw.rounded_rectangle((x, y, x + cell_width, y + cell_height), radius=10, fill=(37, 39, 43), outline=(67, 70, 77), width=2)
+        crop = source.crop(selected["box"])
+        crop = ImageOps.fit(crop, (cell_width - 20, cell_height - 54), _image_resample())
+        board.paste(crop, (x + 10, y + 10))
+        prefix = "M" if target == "material" else "P"
+        draw.text((x + 12, y + cell_height - 35), f"{prefix}{index + 1}  SOURCE REGION", fill=(225, 228, 234), font=label_font)
+    return board, {"target": target, "sample": sample, "source_derived": True, "sample_count": len(samples)}
+
+
+def build_color_reference_atlas(source, sample="hierarchy"):
+    source = ImageOps.exif_transpose(source).convert("RGB")
+    color_count = {"dominant": 5, "hierarchy": 7, "detailed": 10}.get(str(sample), 7)
+    reduced = source.copy()
+    reduced.thumbnail((320, 320), _image_resample())
+    quantized = reduced.quantize(colors=color_count, method=Image.Quantize.MEDIANCUT)
+    palette = quantized.getpalette()
+    total = max(1, reduced.width * reduced.height)
+    colors = []
+    for count, palette_index in sorted(quantized.getcolors() or [], reverse=True):
+        offset = palette_index * 3
+        rgb = tuple(palette[offset:offset + 3])
+        colors.append({"rgb": rgb, "hex": "#%02X%02X%02X" % rgb, "percent": round(count * 100 / total, 1)})
+
+    board = Image.new("RGB", (1400, 820), (16, 17, 20))
+    draw = ImageDraw.Draw(board)
+    title_font = _atlas_font(34, bold=True)
+    body_font = _atlas_font(20)
+    value_font = _atlas_font(22, bold=True)
+    draw.text((40, 32), "COLORS FROM SOURCE", fill=(244, 245, 247), font=title_font)
+    draw.text((40, 76), "Measured source palette, ordered by pixel coverage", fill=(161, 166, 176), font=body_font)
+    _draw_source_preview(board, draw, source, (40, 122, 500, 650))
+    columns = 2
+    gap = 18
+    start_x = 580
+    start_y = 122
+    cell_width = 372
+    cell_height = 112
+    for index, color in enumerate(colors):
+        column = index % columns
+        row = index // columns
+        x = start_x + column * (cell_width + gap)
+        y = start_y + row * (cell_height + gap)
+        draw.rounded_rectangle((x, y, x + cell_width, y + cell_height), radius=10, fill=(37, 39, 43), outline=(67, 70, 77), width=2)
+        draw.rounded_rectangle((x + 10, y + 10, x + 118, y + cell_height - 10), radius=7, fill=color["rgb"])
+        draw.text((x + 138, y + 22), color["hex"], fill=(235, 237, 241), font=value_font)
+        draw.text((x + 138, y + 61), f'{color["percent"]}% of source', fill=(161, 166, 176), font=body_font)
+    return board, {"target": "color", "sample": sample, "source_derived": True, "palette": colors}
+
+
+def build_extract_reference(source, target="material", sample="hierarchy", instruction=""):
+    target = str(target or "material").lower()
+    sample = str(sample or "hierarchy").lower()
+    if target == "color":
+        return build_color_reference_atlas(source, sample=sample)
+    if target not in {"material", "parts"}:
+        raise ValueError("Unknown extraction target.")
+    return build_region_reference_atlas(source, target=target, sample=sample, instruction=instruction)
+
+
+MATERIAL_TYPE_RULES = (
+    ("LED display panel", ("led display", "display panel", "digital screen", "video wall", "screen")),
+    ("Polished concrete", ("polished concrete", "concrete")),
+    ("Painted steel", ("painted steel", "steel", "metal frame", "metallic", "metal")),
+    ("Architectural glass", ("frosted glass", "translucent glass", "glass")),
+    ("Natural wood", ("timber", "wooden", "wood")),
+    ("Fabric textile", ("upholstery", "textile", "fabric", "cloth")),
+    ("Molded plastic", ("polymer", "plastic")),
+    ("Stone", ("marble", "granite", "limestone", "stone")),
+    ("Ceramic", ("porcelain", "ceramic", "tile")),
+    ("Leather", ("leather",)),
+    ("Rubber", ("rubber",)),
+)
+
+MATERIAL_MACRO_DETAILS = {
+    "LED display panel": "A true macro view resolves the repeating LED pixel matrix, dark module substrate, fine panel seams, protective face finish, and controlled specular reflections.",
+    "Polished concrete": "A true macro view shows fine mineral aggregate, subtle tonal mottling, shallow pores, polishing variation, and soft broad reflections rather than a perfectly uniform gray surface.",
+    "Painted steel": "A true macro view shows the coating texture over rigid metal, crisp fabricated edges, welded or bolted joins where present, minor orange-peel roughness, and narrow specular highlights.",
+    "Architectural glass": "A true macro view shows a smooth continuous face, edge tint or internal diffusion when visible, faint surface reflections, and any frosting or printed treatment as a separate fine layer.",
+    "Natural wood": "A true macro view resolves directional grain, pores, fibers, finish buildup, small color variation, and wear that follows the grain rather than random noise.",
+    "Fabric textile": "A true macro view resolves individual yarns, weave direction, fiber softness, pile or knit structure, and small compression or wear changes.",
+    "Molded plastic": "A true macro view shows a consistent polymer surface with fine molding texture, controlled gloss, subtle flow or tooling marks, and softened manufactured edges.",
+    "Stone": "A true macro view resolves mineral grains, veins or inclusions, pores, cut or honed finish, and irregular natural variation at the correct scale.",
+    "Ceramic": "A true macro view shows the fired glaze or matte body, fine surface variation, crisp joints, and localized reflections that follow the finish.",
+    "Leather": "A true macro view resolves grain, pores, wrinkles, finish variation, stitching or edge treatment, and wear concentrated along contact areas.",
+    "Rubber": "A true macro view shows a fine molded or matte texture, low broad reflectivity, compression marks, and subtle edge wear.",
+}
+
+MATERIAL_LOCATION_RULES = (
+    ("Floor", ("floor", "floors", "ground")),
+    ("Ceiling", ("ceiling", "ceilings", "roof", "roofs")),
+    ("Structural frame", ("structural frame", "structural frames", "frame", "frames", "beam", "beams", "truss", "trusses", "column", "columns")),
+    ("Display wall", ("display wall", "display walls", "display-panel", "display panel", "display panels", "led display", "led displays", "screen", "screens", "video wall", "video walls")),
+    ("Wall", ("wall", "walls", "facade", "facades")),
+    ("Window", ("window", "windows", "glazing")),
+    ("Furniture", ("chair", "chairs", "table", "tables", "desk", "desks", "sofa", "sofas", "furniture")),
+    ("Subject surface", ("clothing", "outfit", "shoe", "skin")),
+)
+
+
+def _first_matching_label(text, rules, default):
+    lowered = str(text or "").casefold()
+    for label, terms in rules:
+        if any(re.search(rf"(?<!\w){re.escape(term)}(?!\w)", lowered) for term in terms):
+            return label
+    return default
+
+
+def material_profiles_from_analysis(analysis, limit=4):
+    text = " ".join(str(analysis or "").replace("\r", "\n").split())
+    if not text:
+        return []
+    sentences = [item.strip() for item in re.split(r"(?<=[.!?])\s+", text) if item.strip()]
+    groups = []
+    current = None
+    for sentence in sentences:
+        location = _first_matching_label(sentence, MATERIAL_LOCATION_RULES, "")
+        if location and (current is None or location != current["location"]):
+            current = {"location": location, "sentences": [sentence]}
+            groups.append(current)
+        elif current is not None:
+            current["sentences"].append(sentence)
+        elif not groups:
+            current = {"location": "Visible surface", "sentences": [sentence]}
+            groups.append(current)
+
+    profiles = []
+    seen = set()
+    for group in groups:
+        description = " ".join(group["sentences"])
+        material_type = _first_matching_label(description, MATERIAL_TYPE_RULES, f'{group["location"]} finish')
+        key = (group["location"], material_type)
+        if key in seen:
+            continue
+        seen.add(key)
+        description = re.sub(r"\b(high-quality|easy to clean|easy cleaning and maintenance)\b", "", description, flags=re.IGNORECASE)
+        description = re.sub(r"\s+", " ", description).strip()
+        if len(description) > 360:
+            description = description[:357].rsplit(" ", 1)[0] + "..."
+        profiles.append({
+            "name": material_type,
+            "location": group["location"],
+            "observed": description,
+            "close_up": MATERIAL_MACRO_DETAILS.get(
+                material_type,
+                "A true macro view should preserve the observed color, microtexture, roughness, reflectivity, seams, fabrication marks, and wear at physically plausible scale.",
+            ),
+            "confidence": "Vision inferred from the connected source",
+        })
+        if len(profiles) >= max(1, min(4, int(limit or 4))):
+            break
+    return profiles
+
+
+def material_analysis_instruction(user_instruction=""):
+    focus = str(user_instruction or "").strip()
+    focus_line = f" Give priority to this requested scope: {focus}." if focus else ""
+    return (
+        "Describe the four main physical surface systems in this image for a professional material study. "
+        "Include large scene-defining floor, ceiling, structural, wall, display-panel, furniture, or object surfaces that are visibly present. "
+        "Treat an LED display as a physical LED panel surface, but ignore all words, logos, people, pictures, screen graphics, and lighting effects. "
+        "Write one concise paragraph per material. Start each paragraph with its visible location and most likely common physical material type. "
+        "Describe only observed base color, close-up microtexture, pattern scale, roughness, gloss or reflectivity, seams or joints, fabrication, and wear. "
+        "If exact composition cannot be confirmed visually, say visually inferred instead of inventing certainty."
+        + focus_line
+    )
+
+
+def analyze_materials_with_vision(image_name, user_instruction="", limit=4):
+    model = choose_image_to_prompt_model()
+    if not model:
+        raise RuntimeError("Install an InvokeAI image-to-prompt vision model to analyze material types.")
+    ensure_generation_queue_idle()
+    try:
+        response = invoke_json(
+            "/api/v1/utilities/image-to-prompt",
+            method="POST",
+            payload={
+                "image_name": Path(image_name).name,
+                "model_key": model["key"],
+                "instruction": material_analysis_instruction(user_instruction),
+            },
+            timeout=180,
+        ) or {}
+    finally:
+        cache_cleared = clear_invoke_model_cache_best_effort()
+    analysis = str(response.get("prompt") or response.get("text") or "").strip()
+    profiles = material_profiles_from_analysis(analysis, limit=limit)
+    if not profiles:
+        raise RuntimeError("The local vision model could not identify usable material surfaces in this image.")
+    return profiles, analysis, {
+        "key": model["key"],
+        "name": model.get("name"),
+        "cache_policy": "unload_after_analysis",
+        "cache_cleared": cache_cleared,
+    }
+
+
+def _wrapped_lines(text, width, max_lines):
+    lines = textwrap.wrap(str(text or ""), width=max(12, int(width)), break_long_words=False, break_on_hyphens=False)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1].rstrip(" .") + "..."
+    return lines
+
+
+def build_material_study_report(macro_board, source, materials):
+    macro_board = ImageOps.exif_transpose(macro_board).convert("RGB")
+    source = ImageOps.exif_transpose(source).convert("RGB")
+    materials = list(materials or [])[:4]
+    board = Image.new("RGB", (1800, 1200), (16, 17, 20))
+    draw = ImageDraw.Draw(board)
+    title_font = _atlas_font(38, bold=True)
+    subtitle_font = _atlas_font(19)
+    panel_title_font = _atlas_font(25, bold=True)
+    label_font = _atlas_font(15, bold=True)
+    body_font = _atlas_font(17)
+    draw.text((40, 28), "MATERIAL STUDY", fill=(244, 245, 247), font=title_font)
+    draw.text((40, 78), "Vision-inferred material types with generated macro reconstruction", fill=(161, 166, 176), font=subtitle_font)
+    source_thumb = ImageOps.contain(source, (270, 82), _image_resample())
+    board.paste(source_thumb, (1490 + (270 - source_thumb.width) // 2, 22 + (82 - source_thumb.height) // 2))
+    draw.rounded_rectangle((1480, 12, 1770, 114), radius=10, outline=(67, 70, 77), width=2)
+
+    half_width = macro_board.width // 2
+    half_height = macro_board.height // 2
+    quadrants = (
+        (0, 0, half_width, half_height),
+        (half_width, 0, macro_board.width, half_height),
+        (0, half_height, half_width, macro_board.height),
+        (half_width, half_height, macro_board.width, macro_board.height),
+    )
+    panel_positions = ((40, 138), (920, 138), (40, 664), (920, 664))
+    for index, material in enumerate(materials):
+        x, y = panel_positions[index]
+        panel_width, panel_height = 840, 496
+        draw.rounded_rectangle((x, y, x + panel_width, y + panel_height), radius=12, fill=(35, 37, 41), outline=(69, 72, 79), width=2)
+        macro = macro_board.crop(quadrants[index])
+        macro = ImageOps.fit(macro, (350, 464), _image_resample())
+        board.paste(macro, (x + 16, y + 16))
+        text_x = x + 390
+        cursor_y = y + 18
+        title = f'{index + 1}. {material.get("name") or "Material"}'
+        for line in _wrapped_lines(title, 30, 2):
+            draw.text((text_x, cursor_y), line, fill=(242, 244, 247), font=panel_title_font)
+            cursor_y += 31
+        cursor_y += 6
+        draw.text((text_x, cursor_y), "LOCATION", fill=(151, 156, 167), font=label_font)
+        cursor_y += 22
+        draw.text((text_x, cursor_y), str(material.get("location") or "Visible surface"), fill=(217, 220, 226), font=body_font)
+        cursor_y += 31
+        draw.text((text_x, cursor_y), "OBSERVED", fill=(151, 156, 167), font=label_font)
+        cursor_y += 22
+        for line in _wrapped_lines(material.get("observed"), 48, 6):
+            draw.text((text_x, cursor_y), line, fill=(207, 210, 217), font=body_font)
+            cursor_y += 22
+        cursor_y += 8
+        draw.text((text_x, cursor_y), "TRUE CLOSE-UP", fill=(151, 156, 167), font=label_font)
+        cursor_y += 22
+        for line in _wrapped_lines(material.get("close_up"), 48, 6):
+            draw.text((text_x, cursor_y), line, fill=(207, 210, 217), font=body_font)
+            cursor_y += 22
+    return board
 
 
 def model_field(model):
@@ -1132,6 +1585,9 @@ def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro
         },
     }
 
+    if isinstance(generation_profile, dict) and generation_profile.get("kind") == "extract-material":
+        nodes["save"]["is_intermediate"] = True
+
     edges = [
         {"source": {"node_id": "loader", "field": "qwen3_encoder"}, "destination": {"node_id": "prompt", "field": "qwen3_encoder"}},
         {"source": {"node_id": "loader", "field": "max_seq_len"}, "destination": {"node_id": "prompt", "field": "max_seq_len"}},
@@ -1452,6 +1908,12 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/upload":
                 query = parse_qs(parsed.query)
                 self.handle_upload(is_intermediate=(query.get("is_intermediate") or ["false"])[0].lower() == "true")
+            elif parsed.path == "/api/extract-reference":
+                self.handle_extract_reference()
+            elif parsed.path == "/api/material-analysis":
+                self.handle_material_analysis()
+            elif parsed.path == "/api/material-report":
+                self.handle_material_report()
             elif parsed.path == "/api/generate":
                 self.handle_generate()
             elif parsed.path == "/api/video/generate":
@@ -1511,6 +1973,65 @@ class Handler(BaseHTTPRequestHandler):
         content_type = field.type or "image/png"
         status, payload = upload_image_bytes(file_bytes, filename, content_type, is_intermediate=is_intermediate)
         self.send_json(payload, status=status)
+
+    def handle_extract_reference(self):
+        if Image is None:
+            self.send_json({"error": "Contextual extraction requires Pillow in the Simple Mode environment."}, status=500)
+            return
+        payload = self.read_json()
+        image_name = Path(payload.get("image_name") or "").name
+        if not image_name:
+            self.send_json({"error": "Connect a source image to the Extract node first."}, status=400)
+            return
+        target = str(payload.get("target") or "material").lower()
+        sample = str(payload.get("sample") or "hierarchy").lower()
+        instruction = str(payload.get("instruction") or "").strip()
+        _, source_bytes, _ = invoke_raw(f"/api/v1/images/i/{quote(image_name)}/full", timeout=45)
+        with Image.open(BytesIO(source_bytes)) as loaded:
+            atlas, metadata = build_extract_reference(loaded.copy(), target=target, sample=sample, instruction=instruction)
+        output = BytesIO()
+        atlas.save(output, format="PNG", optimize=True)
+        filename = f"extract-{target}-{uuid.uuid4().hex[:10]}.png"
+        status, image = upload_image_bytes(output.getvalue(), filename, "image/png", is_intermediate=False)
+        image["width"], image["height"] = atlas.size
+        self.send_json({"image": image, "metadata": metadata}, status=status)
+
+    def handle_material_analysis(self):
+        payload = self.read_json()
+        image_name = Path(payload.get("image_name") or "").name
+        if not image_name:
+            self.send_json({"error": "Connect a source image to the Material node first."}, status=400)
+            return
+        sample = str(payload.get("sample") or "hierarchy").lower()
+        limit = {"dominant": 3, "hierarchy": 4, "detailed": 4}.get(sample, 4)
+        profiles, analysis, model = analyze_materials_with_vision(
+            image_name,
+            user_instruction=payload.get("instruction") or "",
+            limit=limit,
+        )
+        self.send_json({"materials": profiles, "analysis": analysis, "model": model})
+
+    def handle_material_report(self):
+        if Image is None:
+            self.send_json({"error": "Material report composition requires Pillow."}, status=500)
+            return
+        payload = self.read_json()
+        macro_name = Path(payload.get("macro_image_name") or "").name
+        source_name = Path(payload.get("source_image_name") or "").name
+        materials = payload.get("materials") or []
+        if not macro_name or not source_name or not isinstance(materials, list) or not materials:
+            self.send_json({"error": "Macro image, source image, and material analysis are required."}, status=400)
+            return
+        _, macro_bytes, _ = invoke_raw(f"/api/v1/images/i/{quote(macro_name)}/full", timeout=45)
+        _, source_bytes, _ = invoke_raw(f"/api/v1/images/i/{quote(source_name)}/full", timeout=45)
+        with Image.open(BytesIO(macro_bytes)) as macro_loaded, Image.open(BytesIO(source_bytes)) as source_loaded:
+            report = build_material_study_report(macro_loaded.copy(), source_loaded.copy(), materials)
+        output = BytesIO()
+        report.save(output, format="PNG", optimize=True)
+        filename = f"material-study-{uuid.uuid4().hex[:10]}.png"
+        status, image = upload_image_bytes(output.getvalue(), filename, "image/png", is_intermediate=False)
+        image["width"], image["height"] = report.size
+        self.send_json({"image": image}, status=status)
 
     def handle_upscale(self):
         payload = self.read_json()
