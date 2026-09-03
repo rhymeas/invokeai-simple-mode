@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.9 - 2026-09-03
+
+- Release orphaned material-study report claims on workspace load so a reload during report composition resumes instead of stalling.
+
 ## 1.9.8 - 2026-09-03
 
 - Report missing FLUX, video, and vision models as HTTP 400 and unusable material sources as HTTP 422 instead of 500.

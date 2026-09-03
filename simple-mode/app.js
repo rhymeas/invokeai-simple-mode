@@ -408,6 +408,9 @@ function applyWorkspaceDocument(document) {
     ...output,
     id: String(output.id),
     itemId: output.itemId ?? output.id,
+    ...(output.materialStudy && output.materialStudy.finalized === 'composing'
+      ? { materialStudy: { ...output.materialStudy, finalized: false } }
+      : {}),
   }));
   state.focusHistories = Object.fromEntries(Object.entries(saved.focusHistories || {}).map(([endpoint, history]) => {
     const layers = (Array.isArray(history?.layers) ? history.layers : [])
