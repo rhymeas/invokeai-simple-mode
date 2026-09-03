@@ -253,6 +253,20 @@ class PromptCompilerTests(unittest.TestCase):
         expected = PathModule(SERVER.APP_DIR).parent.joinpath("VERSION").read_text(encoding="utf-8").strip()
         self.assertTrue(expected)
         self.assertEqual("InvokeSimpleMode/" + expected, SERVER.Handler.server_version)
+    def test_version_lookup_prefers_installed_layout(self):
+        import tempfile as tempfile_module
+        from pathlib import Path as PathModule
+        with tempfile_module.TemporaryDirectory() as tmp:
+            app_dir = PathModule(tmp) / 'simple-mode'
+            app_dir.mkdir()
+            (app_dir / 'VERSION').write_text('9.9.9-installed' + chr(10), encoding='utf-8')
+            (PathModule(tmp) / 'VERSION').write_text('9.9.9-repo' + chr(10), encoding='utf-8')
+            with patch.object(SERVER, 'APP_DIR', app_dir):
+                self.assertEqual('9.9.9-installed', SERVER.simple_mode_version())
+            empty = PathModule(tmp) / 'empty'
+            empty.mkdir()
+            with patch.object(SERVER, 'APP_DIR', empty / 'missing'):
+                self.assertEqual('unknown', SERVER.simple_mode_version())
 
 
     def test_missing_models_and_unusable_sources_map_to_4xx(self):

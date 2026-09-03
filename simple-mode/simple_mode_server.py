@@ -1845,10 +1845,14 @@ def ensure_generation_queue_idle():
 
 
 def simple_mode_version():
-    try:
-        return (APP_DIR.parent / "VERSION").read_text(encoding="utf-8").strip()
-    except OSError:
-        return "unknown"
+    for candidate in (APP_DIR / "VERSION", APP_DIR.parent / "VERSION"):
+        try:
+            text = candidate.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if text:
+            return text
+    return "unknown"
 
 
 class Handler(BaseHTTPRequestHandler):
