@@ -248,6 +248,13 @@ class PromptCompilerTests(unittest.TestCase):
         self.assertEqual('tiny', model['key'])
         self.assertIn(('/api/v1/utilities/expand-prompt', 'POST'), calls)
         self.assertIn(('/api/v2/models/empty_model_cache', 'POST'), calls)
+    def test_server_header_tracks_version_file(self):
+        from pathlib import Path as PathModule
+        expected = PathModule(SERVER.APP_DIR).parent.joinpath("VERSION").read_text(encoding="utf-8").strip()
+        self.assertTrue(expected)
+        self.assertEqual("InvokeSimpleMode/" + expected, SERVER.Handler.server_version)
+
+
     def test_missing_models_and_unusable_sources_map_to_4xx(self):
         self.assertEqual(400, SERVER.invoke_error_status(SERVER.MissingModelError('x')))
         self.assertEqual(422, SERVER.invoke_error_status(SERVER.UnusableSourceError('x')))

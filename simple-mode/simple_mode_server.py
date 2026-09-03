@@ -1844,8 +1844,15 @@ def ensure_generation_queue_idle():
         raise QueueBusyError("Wait for the current InvokeAI render queue to finish before running the vision model.")
 
 
+def simple_mode_version():
+    try:
+        return (APP_DIR.parent / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "InvokeSimpleMode/1.8.0"
+    server_version = "InvokeSimpleMode/" + simple_mode_version()
 
     def log_message(self, fmt, *args):
         return
