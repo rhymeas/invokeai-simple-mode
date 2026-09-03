@@ -1463,18 +1463,21 @@ def expand_prompt_locally(prompt, images, generation_profile=None):
         if cached:
             return cached, model
         try:
-            response = invoke_json(
-                "/api/v1/utilities/expand-prompt",
-                method="POST",
-                payload={
-                    "prompt": str(prompt).strip(),
-                    "model_key": model["key"],
-                    "max_tokens": 160,
-                    "system_prompt": FLUX_PROMPT_EXPANSION_SYSTEM,
-                    "seed": 0,
-                },
-                timeout=180,
-            ) or {}
+            try:
+                response = invoke_json(
+                    "/api/v1/utilities/expand-prompt",
+                    method="POST",
+                    payload={
+                        "prompt": str(prompt).strip(),
+                        "model_key": model["key"],
+                        "max_tokens": 160,
+                        "system_prompt": FLUX_PROMPT_EXPANSION_SYSTEM,
+                        "seed": 0,
+                    },
+                    timeout=180,
+                ) or {}
+            finally:
+                clear_invoke_model_cache_best_effort()
             expanded = " ".join(str(response.get("expanded_prompt") or "").split()).strip()
             if not expanded or expanded.casefold() == str(prompt).strip().casefold():
                 return None, model

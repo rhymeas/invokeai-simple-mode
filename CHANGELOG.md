@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.4 - 2026-09-03
+
+- Unload the InvokeAI model cache immediately after optional prompt expansion, so the helper LLM never stays resident next to FLUX.
+
 ## 1.9.3 - 2026-09-03
 
 - Fixed removal prompts reattaching the removed color or material through generic binding guidance.

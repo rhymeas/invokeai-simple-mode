@@ -219,6 +219,27 @@ class PromptCompilerTests(unittest.TestCase):
             chosen = SERVER.choose_prompt_expansion_model()
 
         self.assertEqual('low', chosen['key'])
+
+    def test_prompt_expansion_unloads_llm_after_use(self):
+        calls = []
+
+        def fake_invoke(path, method='GET', payload=None, timeout=30):
+            calls.append((path, method))
+            if path == '/api/v2/models/?with_config=true':
+                return {'models': [{'key': 'tiny', 'name': 'Qwen3-0.6B', 'type': 'text_llm'}]}
+            if path == '/api/v1/queue/default/status':
+                return {'queue': {'pending': 0, 'in_progress': 0}, 'processor': {'is_processing': False}}
+            if path == '/api/v1/utilities/expand-prompt':
+                return {'expanded_prompt': 'a small red chair with coherent shadows'}
+            return None
+
+        with patch.object(SERVER, 'invoke_json', side_effect=fake_invoke):
+            expanded, model = SERVER.expand_prompt_locally('add a red chair', [{'slot': 0, 'image_name': 's.png'}])
+
+        self.assertTrue(expanded)
+        self.assertEqual('tiny', model['key'])
+        self.assertIn(('/api/v1/utilities/expand-prompt', 'POST'), calls)
+        self.assertIn(('/api/v2/models/empty_model_cache', 'POST'), calls)
     def test_extract_rejects_unknown_target_before_fetch(self):
         import json as json_module
         import threading as threading_module
