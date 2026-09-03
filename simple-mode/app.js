@@ -2808,8 +2808,31 @@ function restoreResultCards() {
 
 async function pollItem(id) {
   const card = document.querySelector(`.result-card[data-item-id="${id}"]`);
-  const response = await fetch(`/api/item/${id}`);
-  const item = await response.json();
+  let pollResponse;
+  try {
+    pollResponse = await fetch(`/api/item/${id}`);
+  } catch (pollError) {
+    setTimeout(() => pollItem(id), 3500);
+    return;
+  }
+  if (!pollResponse.ok) {
+    if (pollResponse.status === 404) {
+      const expired = state.outputs.find((entry) => String(entry.itemId) === String(id));
+      if (expired) {
+        expired.status = 'failed';
+        requestCanvasRender();
+        renderFocusVariants();
+      }
+      if (card) {
+        card.innerHTML = '<span>Expired<br><small>The queue record is gone, so this result can no longer resume. Re-queue it.</small></span>';
+        card.classList.remove('loading');
+      }
+      return;
+    }
+    setTimeout(() => pollItem(id), 3500);
+    return;
+  }
+  const item = await pollResponse.json();
   let media = item.media || item.video || item.image;
   if (item.status === 'completed' && media) {
     const output = state.outputs.find((entry) => String(entry.itemId) === String(id));

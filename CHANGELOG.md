@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.10 - 2026-09-03
+
+- Expired queue records now fail fast: a result card whose InvokeAI queue item is gone (HTTP 404) shows an honest Expired state instead of polling forever, and transport errors retry instead of silently killing the poll loop.
+
 ## 1.9.9 - 2026-09-03
 
 - Release orphaned material-study report claims on workspace load so a reload during report composition resumes instead of stalling.
