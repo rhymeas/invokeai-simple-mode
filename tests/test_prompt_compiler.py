@@ -247,5 +247,26 @@ class PromptCompilerTests(unittest.TestCase):
         finally:
             server.shutdown()
             thread.join(timeout=10)
+    def test_http_error_from_invoke_is_not_reported_as_offline(self):
+        import io as io_module
+        import urllib.error as url_error
+
+        body = io_module.BytesIO(b'{"detail": "Model X is not a LLaVA OneVision model"}')
+        error = url_error.HTTPError(
+            "http://127.0.0.1:9090/api/v1/utilities/image-to-prompt", 422, "Unprocessable Entity", {}, body)
+
+        self.assertEqual(422, SERVER.invoke_error_status(error))
+        message = SERVER.invoke_error_message(error)
+        self.assertIn("422", message)
+        self.assertIn("LLaVA OneVision", message)
+        self.assertNotIn("offline", message.casefold())
+
+    def test_refused_connection_stays_offline_503(self):
+        import urllib.error as url_error
+
+        error = url_error.URLError(ConnectionRefusedError(10061, "refused"))
+
+        self.assertEqual(503, SERVER.invoke_error_status(error))
+        self.assertIn("offline", SERVER.invoke_error_message(error).casefold())
 if __name__ == "__main__":
     unittest.main()

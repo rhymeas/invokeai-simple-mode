@@ -1,4 +1,6 @@
-# InvokeAI Simple Mode v1.9.1
+# InvokeAI Simple Mode v1.9.2
+
+Patch release: InvokeAI HTTP errors (for example a 422 vision-model mismatch) are now reported with their real status and detail instead of a false offline message.
 
 Patch release: optional prompt expansion now prefers the smallest capable Qwen (Qwen3 0.6B first) with correct size-bucket ordering, and the Extract endpoint rejects unknown targets with HTTP 400 before fetching anything.
 
@@ -12,7 +14,7 @@ The built-in deterministic compiler requires no additional model and adds no VRA
 
 ## Important
 
-- Windows 10/11 only for v1.9.1.
+- Windows 10/11 only for v1.9.2.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.

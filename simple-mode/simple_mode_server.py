@@ -237,12 +237,27 @@ def clear_invoke_model_cache_best_effort():
 
 
 def invoke_error_message(error):
+    if isinstance(error, urllib.error.HTTPError):
+        detail = ""
+        try:
+            payload = json.loads((error.read() or b"").decode("utf-8") or "{}")
+            if isinstance(payload, dict):
+                detail = str(payload.get("detail") or payload.get("message") or "").strip()
+        except Exception:
+            detail = ""
+        if detail:
+            return f"InvokeAI rejected the request ({error.code}): {detail}"
+        return f"InvokeAI rejected the request ({error.code})."
     if isinstance(error, urllib.error.URLError):
         return "InvokeAI is offline. Start InvokeAI to load models, upload images, or render."
     return str(error)
 
 
 def invoke_error_status(error):
+    if isinstance(error, urllib.error.HTTPError):
+        if error.code in (400, 404, 409, 422):
+            return error.code
+        return 502
     return 503 if isinstance(error, urllib.error.URLError) else 500
 
 

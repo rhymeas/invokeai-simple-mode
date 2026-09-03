@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.2 - 2026-09-03
+
+- Fixed InvokeAI HTTP errors being misreported as offline with status 503. Rejected requests now surface their real status and detail message.
+
 ## 1.9.1 - 2026-09-03
 
 - Prefer the smallest capable Qwen for optional prompt expansion, starting with Qwen3 0.6B, using parsed size buckets instead of substring matching.
