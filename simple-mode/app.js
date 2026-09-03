@@ -2755,6 +2755,9 @@ function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'ima
       h: 146,
       image: null,
       ...(options.outputMeta || {}),
+      ...(options.outputMeta && options.outputMeta.materialStudy
+        ? { materialStudy: { ...options.outputMeta.materialStudy } }
+        : {}),
     };
   });
   state.outputs = options.append ? [...state.outputs, ...created] : created;
@@ -2805,7 +2808,13 @@ async function pollItem(id) {
   if (item.status === 'completed' && media) {
     const output = state.outputs.find((entry) => String(entry.itemId) === String(id));
     if (output) {
+      if (output.materialStudy && output.materialStudy.finalized === 'composing') {
+        setTimeout(() => pollItem(id), 3500);
+        return;
+      }
+      if (output.materialStudy && output.materialStudy.finalized && output.image) return;
       if (output.materialStudy && !output.materialStudy.finalized && media.image_name) {
+        output.materialStudy.finalized = 'composing';
         output.status = 'processing';
         requestCanvasRender();
         setUploadStatus('Composing the detailed material report...', 'busy');

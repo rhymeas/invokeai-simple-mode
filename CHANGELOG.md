@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.5 - 2026-09-03
+
+- Hardened the material-study async chain: concurrent poll loops can no longer fire duplicate material-report compositions, late watchdog loops no longer duplicate focus history, and each output owns its study state.
+
 ## 1.9.4 - 2026-09-03
 
 - Unload the InvokeAI model cache immediately after optional prompt expansion, so the helper LLM never stays resident next to FLUX.
