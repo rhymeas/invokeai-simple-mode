@@ -195,6 +195,14 @@ class PromptCompilerTests(unittest.TestCase):
         )
 
 
+    def test_generation_seeds_are_stable_per_item(self):
+        self.assertEqual([100, 10073, 20046], SERVER.generation_seeds(100, 3))
+        self.assertEqual([], SERVER.generation_seeds(100, 0))
+        seeds = SERVER.generation_seeds(4294960000, 2)
+        self.assertEqual(4294960000, seeds[0])
+        self.assertEqual((4294960000 + 9973) % 4294967295, seeds[1])
+
+
     def test_expansion_prefers_smallest_qwen(self):
         models = [
             {'key': 'big', 'name': 'Qwen2.5-3B-Instruct', 'type': 'text_llm'},

@@ -1539,6 +1539,10 @@ def build_prompt(prompt, images, connections=None, generation_profile=None, expa
     return "\n".join(lines)
 
 
+def generation_seeds(base_seed, count):
+    return [int((int(base_seed) + index * 9973) % 4294967295) for index in range(max(0, int(count)))]
+
+
 def build_graph(images, prompt, aspect, steps, seed, connections=None, mode="pro", mask_image_name=None, preview_size=None, model_key=None, generation_profile=None, expanded_prompt=None):
     main_model, qwen_model, vae_model = choose_models(model_key)
     source_image = next((image for image in images if image), None)
@@ -2235,8 +2239,8 @@ class Handler(BaseHTTPRequestHandler):
 
         expanded_prompt, prompt_expander = expand_prompt_locally(prompt, images, generation_profile)
         item_ids = []
-        for index in range(count):
-            seed = (base_seed + index * 9973) % 4294967295
+        seeds = generation_seeds(base_seed, count)
+        for index, seed in enumerate(seeds):
             graph = build_graph(
                 images, prompt, aspect, steps, seed, connections, mode, mask_image_name, preview_size,
                 model_key=model_key, generation_profile=generation_profile, expanded_prompt=expanded_prompt,
@@ -2257,6 +2261,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({
             "item_ids": item_ids,
             "seed": base_seed,
+            "seeds": seeds,
             "preview_size": preview_size,
             "prompt_enhancement": {
                 "structured": True,

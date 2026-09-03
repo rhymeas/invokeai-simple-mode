@@ -2758,6 +2758,9 @@ function createResultCards(ids, sourceEndpointOverride = null, outputKind = 'ima
       ...(options.outputMeta && options.outputMeta.materialStudy
         ? { materialStudy: { ...options.outputMeta.materialStudy } }
         : {}),
+      seed: Array.isArray(options.seeds)
+        ? (options.seeds[index] === undefined ? null : options.seeds[index])
+        : null,
     };
   });
   state.outputs = options.append ? [...state.outputs, ...created] : created;
@@ -2931,6 +2934,7 @@ async function submitGeneration({
     if (!response.ok) throw new Error(data.error || 'Generate failed');
     createResultCards(data.item_ids, sourceEndpoint, 'image', {
       append: appendOutputs,
+      seeds: Array.isArray(data.seeds) ? data.seeds : [],
       outputMeta: {
         renderQuality: payload.mode === 'draft' ? 'preview' : 'standard',
         ...outputMeta,
@@ -4405,6 +4409,10 @@ async function generateFromFocus(quality = 'preview') {
       ? { mode: 'pro', steps: 8, count: 1 }
       : { mode: 'draft', steps: 4, preview_size: 360, count: Number(document.getElementById('count').value) || 2 };
     if (maskImageName) extraPayload.mask_image_name = maskImageName;
+    if (standardRender) {
+      const approved = state.outputs.find((output) => String(output.id) === String(activeFocusLayer()?.outputId));
+      if (approved && approved.seed !== undefined && approved.seed !== null) extraPayload.seed = approved.seed;
+    }
     const ids = await submitGeneration({
       prompt,
       images: [focusImage, ...references],

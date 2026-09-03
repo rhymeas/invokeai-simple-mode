@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.6 - 2026-09-03
+
+- Threaded render seeds end to end: the generate endpoint now returns per-item seeds, outputs store them, and rendering an approved 360p preview at standard quality reuses its seed for a faithful reproduction.
+
 ## 1.9.5 - 2026-09-03
 
 - Hardened the material-study async chain: concurrent poll loops can no longer fire duplicate material-report compositions, late watchdog loops no longer duplicate focus history, and each output owns its study state.
