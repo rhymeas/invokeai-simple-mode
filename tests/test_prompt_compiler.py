@@ -248,6 +248,51 @@ class PromptCompilerTests(unittest.TestCase):
         self.assertEqual('tiny', model['key'])
         self.assertIn(('/api/v1/utilities/expand-prompt', 'POST'), calls)
         self.assertIn(('/api/v2/models/empty_model_cache', 'POST'), calls)
+    def test_generate_response_reports_stable_per_item_seeds(self):
+        import json as json_module
+        import threading as threading_module
+        import urllib.request as url_request
+        from http.server import ThreadingHTTPServer as TestHTTPServer
+
+        graph_seeds = []
+
+        def fake_build_graph(images, prompt, aspect, steps, seed, *args, **kwargs):
+            graph_seeds.append(seed)
+            return {'id': 'graph'}
+
+        def fake_invoke(path, method='GET', payload=None, timeout=30):
+            return {'item_ids': ['7']}
+
+        server = TestHTTPServer(('127.0.0.1', 0), SERVER.Handler)
+        thread = threading_module.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with (
+                patch.object(SERVER, 'build_graph', side_effect=fake_build_graph),
+                patch.object(SERVER, 'expand_prompt_locally', return_value=(None, None)),
+                patch.object(SERVER, 'invoke_json', side_effect=fake_invoke),
+            ):
+                payload = json_module.dumps({
+                    'prompt': 'add a red chair',
+                    'images': [{'slot': 0, 'image_name': 's.png'}],
+                    'count': 3, 'seed': 100, 'mode': 'pro', 'steps': 8,
+                }).encode('utf-8')
+                request = url_request.Request(
+                    'http://127.0.0.1:' + str(server.server_port) + '/api/generate',
+                    data=payload,
+                    headers={'Content-Type': 'application/json'},
+                    method='POST',
+                )
+                body = json_module.loads(url_request.urlopen(request, timeout=10).read().decode('utf-8'))
+        finally:
+            server.shutdown()
+            thread.join(timeout=10)
+
+        self.assertEqual(SERVER.generation_seeds(100, 3), body.get('seeds'))
+        self.assertEqual(body.get('seeds'), graph_seeds)
+        self.assertEqual(3, len(body.get('item_ids')))
+
+
     def test_extract_rejects_unknown_target_before_fetch(self):
         import json as json_module
         import threading as threading_module
