@@ -80,7 +80,7 @@ Use concrete positive visual language instead of a negative-prompt list."""
 
 PROMPT_SIGNAL_TERMS = {
     "remove": ("remove", "erase", "delete", "without", "entferne", "entfernen", "lösche", "loesche", "wegmachen"),
-    "replace": ("replace", "swap", "instead of", "change into", "turn into", "ersetze", "ersetzen", "anstatt", "stattdessen"),
+    "replace": ("replace", "swap", "instead of", "change", "change into", "turn into", "ersetze", "ersetzen", "aendern", "ändern", "anstatt", "stattdessen"),
     "add": ("add", "insert", "include", "place", "put ", "füge", "fuege", "hinzufügen", "hinzufuegen", "ergänze", "ergaenze"),
     "camera": ("camera", "view", "angle", "framing", "perspective", "lens", "shot", "kamera", "ansicht", "blickwinkel", "perspektive"),
     "geometry": ("round", "rounded", "corner", "curve", "shape", "geometry", "silhouette", "proportion", "larger", "smaller", "rund", "ecke", "kante", "kurve", "form", "geometrie", "größer", "groesser", "kleiner"),
@@ -1393,6 +1393,9 @@ def flux_execution_guidance(prompt, images, generation_profile=None):
         "identity": "Preserve recognizable identity, anatomy, proportions, clothing continuity, and pose unless the request explicitly changes one of them.",
         "style": "Apply the requested visual language consistently through medium, texture, color treatment, contrast, and finish while preserving factual scene content.",
     }
+    if "remove" in signals and "add" not in signals and "replace" not in signals:
+        signal_guidance["color"] = "Do not reintroduce removed colors elsewhere; let reconstructed areas take color, texture, and light from the surrounding source."
+        signal_guidance["material"] = "Do not reintroduce removed materials elsewhere; let reconstructed areas take surface character from the surrounding source."
     guidance.extend(signal_guidance[signal] for signal in signals[:4] if signal in signal_guidance)
 
     if isinstance(generation_profile, dict) and generation_profile.get("kind"):

@@ -268,5 +268,30 @@ class PromptCompilerTests(unittest.TestCase):
 
         self.assertEqual(503, SERVER.invoke_error_status(error))
         self.assertIn("offline", SERVER.invoke_error_message(error).casefold())
+    def test_removal_dominant_prompt_does_not_reattach_removed_color(self):
+        prompt = SERVER.build_prompt(
+            "remove the white border and make it a seamless lcd wall screen with round corner",
+            [{"slot": 0, "image_name": "source.png", "role": "main"}],
+        )
+
+        self.assertIn("Do not reintroduce removed colors", prompt)
+        self.assertNotIn("Attach each requested color", prompt)
+
+    def test_removal_with_replacement_keeps_color_binding(self):
+        prompt = SERVER.build_prompt(
+            "remove the red border and replace it with a blue frame",
+            [{"slot": 0, "image_name": "source.png", "role": "main"}],
+        )
+
+        self.assertIn("Attach each requested color", prompt)
+        self.assertNotIn("Do not reintroduce removed colors", prompt)
+
+    def test_bare_change_counts_as_replacement(self):
+        prompt = SERVER.build_prompt(
+            "change the right side font to The World Game",
+            [{"slot": 0, "image_name": "source.png", "role": "main"}],
+        )
+
+        self.assertIn("Replace only the named target", prompt)
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.3 - 2026-09-03
+
+- Fixed removal prompts reattaching the removed color or material through generic binding guidance.
+- Made bare change and aendern count as replacement signals for sharper targeted edits.
+
 ## 1.9.2 - 2026-09-03
 
 - Fixed InvokeAI HTTP errors being misreported as offline with status 503. Rejected requests now surface their real status and detail message.
