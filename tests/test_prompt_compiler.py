@@ -195,5 +195,29 @@ class PromptCompilerTests(unittest.TestCase):
         )
 
 
+    def test_expansion_prefers_smallest_qwen(self):
+        models = [
+            {'key': 'big', 'name': 'Qwen2.5-3B-Instruct', 'type': 'text_llm'},
+            {'key': 'tiny', 'name': 'Qwen3-0.6B', 'type': 'text_llm'},
+            {'key': 'small', 'name': 'SmolLM2-1.7B-Instruct', 'type': 'text_llm'},
+            {'key': 'other', 'name': 'Some-7B-Chat', 'type': 'text_llm'},
+        ]
+
+        with patch.object(SERVER, 'invoke_json', return_value={'models': models}):
+            chosen = SERVER.choose_prompt_expansion_model()
+
+        self.assertEqual('tiny', chosen['key'])
+
+    def test_expansion_orders_qwen_sizes_without_substring_traps(self):
+        models = [
+            {'key': 'xl', 'name': 'Qwen3-14B', 'type': 'text_llm'},
+            {'key': 'mid', 'name': 'Qwen3-4B-Instruct', 'type': 'text_llm'},
+            {'key': 'low', 'name': 'Qwen3-1.7B', 'type': 'text_llm'},
+        ]
+
+        with patch.object(SERVER, 'invoke_json', return_value={'models': models}):
+            chosen = SERVER.choose_prompt_expansion_model()
+
+        self.assertEqual('low', chosen['key'])
 if __name__ == "__main__":
     unittest.main()

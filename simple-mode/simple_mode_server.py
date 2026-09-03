@@ -1392,14 +1392,22 @@ def choose_prompt_expansion_model():
         return None
 
     def preference(model):
+        # Smallest capable Qwen first: this is a constrained 45-90 word
+        # rewrite, so a sub-2B model loads in seconds with minimal VRAM.
         name = str(model.get("name") or "").casefold()
-        if "qwen2.5" in name and "3b" in name:
-            return 0
-        if "qwen2.5" in name and "1.5b" in name:
-            return 1
+        size = re.search(r"(\d+(?:\.\d+)?)\s*b\b", name)
+        billions = float(size.group(1)) if size else None
+        if ("qwen3" in name or "qwen2" in name) and billions is not None:
+            if billions <= 1:
+                return 0
+            if billions <= 2:
+                return 1
+            if billions <= 4:
+                return 2
+            return 3
         if "smollm" in name:
-            return 2
-        return 3
+            return 4
+        return 5
 
     return sorted(compatible, key=preference)[0]
 
