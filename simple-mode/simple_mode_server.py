@@ -257,9 +257,21 @@ class QueueBusyError(RuntimeError):
     pass
 
 
+class MissingModelError(RuntimeError):
+    pass
+
+
+class UnusableSourceError(RuntimeError):
+    pass
+
+
 def invoke_error_status(error):
     if isinstance(error, QueueBusyError):
         return 429
+    if isinstance(error, MissingModelError):
+        return 400
+    if isinstance(error, UnusableSourceError):
+        return 422
     if isinstance(error, urllib.error.HTTPError):
         if error.code in (400, 404, 409, 422):
             return error.code
@@ -1057,7 +1069,7 @@ def material_analysis_instruction(user_instruction=""):
 def analyze_materials_with_vision(image_name, user_instruction="", limit=4):
     model = choose_image_to_prompt_model()
     if not model:
-        raise RuntimeError("Install an InvokeAI image-to-prompt vision model to analyze material types.")
+        raise MissingModelError("Install an InvokeAI image-to-prompt vision model to analyze material types.")
     ensure_generation_queue_idle()
     try:
         response = invoke_json(
@@ -1075,7 +1087,7 @@ def analyze_materials_with_vision(image_name, user_instruction="", limit=4):
     analysis = str(response.get("prompt") or response.get("text") or "").strip()
     profiles = material_profiles_from_analysis(analysis, limit=limit)
     if not profiles:
-        raise RuntimeError("The local vision model could not identify usable material surfaces in this image.")
+        raise UnusableSourceError("The local vision model could not identify usable material surfaces in this image.")
     return profiles, analysis, {
         "key": model["key"],
         "name": model.get("name"),
@@ -1202,22 +1214,22 @@ def choose_models(model_key=None):
     if model_key:
         main = next((model for model in compatible if model.get("key") == model_key), None)
         if main is None:
-            raise RuntimeError("The selected FLUX.2 Klein model is not installed.")
+            raise MissingModelError("The selected FLUX.2 Klein model is not installed.")
     else:
         main = compatible[0] if compatible else None
     if main is None:
-        raise RuntimeError("No FLUX.2 Klein main model is installed.")
+        raise MissingModelError("No FLUX.2 Klein main model is installed.")
 
     if main.get("variant") == "klein_9b":
         qwen = next((m for m in models if m.get("type") == "qwen3_encoder" and m.get("variant") == "qwen3_8b"), None)
     else:
         qwen = next((m for m in models if m.get("type") == "qwen3_encoder" and m.get("variant") == "qwen3_4b"), None)
     if qwen is None:
-        raise RuntimeError("No compatible Qwen3 encoder is installed.")
+        raise MissingModelError("No compatible Qwen3 encoder is installed.")
 
     vae = next((m for m in models if m.get("type") == "vae" and m.get("base") == "flux2"), None)
     if vae is None:
-        raise RuntimeError("No FLUX.2 VAE is installed.")
+        raise MissingModelError("No FLUX.2 VAE is installed.")
 
     return main, qwen, vae
 
@@ -1253,7 +1265,7 @@ def choose_wan_models(required=True):
             missing.append("Wan TI2V VAE")
         if not t5:
             missing.append("Wan T5 encoder")
-        raise RuntimeError(f"Video setup is incomplete: {', '.join(missing)}. Use Set up video in the Video node first.")
+        raise MissingModelError(f"Video setup is incomplete: {', '.join(missing)}. Use Set up video in the Video node first.")
     return main, vae, t5
 
 

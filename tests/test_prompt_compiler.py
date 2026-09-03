@@ -248,6 +248,16 @@ class PromptCompilerTests(unittest.TestCase):
         self.assertEqual('tiny', model['key'])
         self.assertIn(('/api/v1/utilities/expand-prompt', 'POST'), calls)
         self.assertIn(('/api/v2/models/empty_model_cache', 'POST'), calls)
+    def test_missing_models_and_unusable_sources_map_to_4xx(self):
+        self.assertEqual(400, SERVER.invoke_error_status(SERVER.MissingModelError('x')))
+        self.assertEqual(422, SERVER.invoke_error_status(SERVER.UnusableSourceError('x')))
+        with patch.object(SERVER, 'invoke_json', return_value={'models': []}):
+            with self.assertRaises(SERVER.MissingModelError):
+                SERVER.choose_models()
+            with self.assertRaises(SERVER.MissingModelError):
+                SERVER.choose_wan_models()
+
+
     def test_busy_render_queue_is_reported_as_429_not_500(self):
         busy = {'queue': {'pending': 1, 'in_progress': 0}, 'processor': {'is_processing': True}}
         idle = {'queue': {'pending': 0, 'in_progress': 0}, 'processor': {'is_processing': False}}

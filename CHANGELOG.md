@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.8 - 2026-09-03
+
+- Report missing FLUX, video, and vision models as HTTP 400 and unusable material sources as HTTP 422 instead of 500.
+
 ## 1.9.7 - 2026-09-03
 
 - Report a busy render queue as HTTP 429 instead of 500 when the vision model refuses to load next to an active render.

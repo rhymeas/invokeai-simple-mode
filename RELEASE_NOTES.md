@@ -1,4 +1,6 @@
-# InvokeAI Simple Mode v1.9.7
+# InvokeAI Simple Mode v1.9.8
+
+Patch release: missing-model and unusable-source failures now report honest 4xx statuses instead of 500.
 
 Patch release: starting vision analysis while a render is running now correctly reports HTTP 429 instead of a 500.
 
@@ -24,7 +26,7 @@ The built-in deterministic compiler requires no additional model and adds no VRA
 
 ## Important
 
-- Windows 10/11 only for v1.9.7.
+- Windows 10/11 only for v1.9.8.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.
