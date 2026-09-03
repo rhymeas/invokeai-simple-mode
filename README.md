@@ -16,7 +16,7 @@ Version **1.9.8** is a Windows release tested with **InvokeAI 6.14.0**, **FLUX.2
 - Purpose-built Variate, New view, and Extract nodes with prompt-backed presets
 - Contextual Extract: measured color palettes plus source-derived material and part sheets, with a VRAM-safe vision-backed material macro study
 - True 360p, four-step previews across Draft mode and specialized nodes
-- Preview-to-standard promotion using the approved preview as image guidance
+- Preview-to-standard promotion reusing the approved preview and its seed for a faithful reproduction
 - One to four variants queued sequentially to protect GPU memory
 - Compact installed-model selector with workspace persistence and automatic encoder matching
 - In-place node mode switching through the node back menu; the Canvas `+` creates separate nodes
