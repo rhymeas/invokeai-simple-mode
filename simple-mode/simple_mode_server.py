@@ -1994,6 +1994,9 @@ class Handler(BaseHTTPRequestHandler):
         target = str(payload.get("target") or "material").lower()
         sample = str(payload.get("sample") or "hierarchy").lower()
         instruction = str(payload.get("instruction") or "").strip()
+        if target not in {"color", "material", "parts"}:
+            self.send_json({"error": "Unknown extraction target. Use color, material, or parts."}, status=400)
+            return
         _, source_bytes, _ = invoke_raw(f"/api/v1/images/i/{quote(image_name)}/full", timeout=45)
         with Image.open(BytesIO(source_bytes)) as loaded:
             atlas, metadata = build_extract_reference(loaded.copy(), target=target, sample=sample, instruction=instruction)

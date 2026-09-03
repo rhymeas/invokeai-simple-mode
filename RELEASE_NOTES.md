@@ -1,4 +1,6 @@
-# InvokeAI Simple Mode v1.9.0
+# InvokeAI Simple Mode v1.9.1
+
+Patch release: optional prompt expansion now prefers the smallest capable Qwen (Qwen3 0.6B first) with correct size-bucket ordering, and the Extract endpoint rejects unknown targets with HTTP 400 before fetching anything.
 
 This release makes Extract contextual. Color palettes are measured from the connected source image, material and part sheets use true source-derived crops, and Materials adds a vision-backed macro study with a composed labeled report. Vision analysis requires an idle queue and unloads the model cache immediately after use, so FLUX rendering stays VRAM-safe.
 
@@ -10,7 +12,7 @@ The built-in deterministic compiler requires no additional model and adds no VRA
 
 ## Important
 
-- Windows 10/11 only for v1.9.0.
+- Windows 10/11 only for v1.9.1.
 - Requires an existing InvokeAI 6.14.0 installation.
 - Model weights are not included.
 - FLUX.2 Klein 9B has its own license and may require Hugging Face approval.

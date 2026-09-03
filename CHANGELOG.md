@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.1 - 2026-09-03
+
+- Prefer the smallest capable Qwen for optional prompt expansion, starting with Qwen3 0.6B, using parsed size buckets instead of substring matching.
+- Reject unknown Extract targets with HTTP 400 before any source image is fetched.
+
 ## 1.9.0 - 2026-09-03
 
 - Made Extract contextual: color palettes are measured from the connected source and material/part sheets use true source-derived crops with spatial instruction filtering.

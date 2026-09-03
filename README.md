@@ -2,7 +2,7 @@
 
 An unofficial community interface for InvokeAI with an open node canvas, image and video generation, direct editing, multi-reference prompts, sequential variants, focus inpainting, upscaling, download, workspaces, and access to native InvokeAI actions.
 
-Version **1.9.0** is a Windows release tested with **InvokeAI 6.14.0**, **FLUX.2 Klein 9B and 4B**, and **Wan 2.2 TI2V-5B Q4**.
+Version **1.9.1** is a Windows release tested with **InvokeAI 6.14.0**, **FLUX.2 Klein 9B and 4B**, and **Wan 2.2 TI2V-5B Q4**.
 
 ## Highlights
 
@@ -42,7 +42,7 @@ Model weights are not included. FLUX.2 Klein 9B is separately licensed by Black 
 ## Install
 
 1. Install and run the official [InvokeAI](https://github.com/invoke-ai/InvokeAI) release once.
-2. Download and extract `InvokeAI-Simple-Mode-v1.9.0.zip` from this project's Releases page.
+2. Download and extract `InvokeAI-Simple-Mode-v1.9.1.zip` from this project's Releases page.
 3. Open PowerShell in the extracted folder.
 4. Run:
 
@@ -87,7 +87,7 @@ Add a **Video** node for text-to-video, or connect an image first for image-to-v
 
 ## Compatibility
 
-The v1.9.0 generation graphs target InvokeAI 6.14.0's FLUX.2 Klein and Wan 2.2 nodes. Specialized node controls are included in the generation request and prompt context; native InvokeAI actions are discovered at runtime. InvokeAI updates may change node schemas; install newer versions with `-Force` only for testing.
+The v1.9.1 generation graphs target InvokeAI 6.14.0's FLUX.2 Klein and Wan 2.2 nodes. Specialized node controls are included in the generation request and prompt context; native InvokeAI actions are discovered at runtime. InvokeAI updates may change node schemas; install newer versions with `-Force` only for testing.
 
 HiDream is optional and is not bundled. The launcher can switch to a separately installed HiDream O1 Dev web app, but HiDream output is not yet a native Simple Mode node.
 

@@ -9,3 +9,8 @@ release/
 simple-mode/workspaces/
 *.zip
 *.sha256
+
+# GitNexus generated agent context (regenerate with: gitnexus analyze)
+AGENTS.md
+CLAUDE.md
+.claude/

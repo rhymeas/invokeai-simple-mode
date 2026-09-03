@@ -219,5 +219,33 @@ class PromptCompilerTests(unittest.TestCase):
             chosen = SERVER.choose_prompt_expansion_model()
 
         self.assertEqual('low', chosen['key'])
+    def test_extract_rejects_unknown_target_before_fetch(self):
+        import json as json_module
+        import threading as threading_module
+        import urllib.error as url_error
+        import urllib.request as url_request
+        from http.server import ThreadingHTTPServer as TestHTTPServer
+
+        server = TestHTTPServer(('127.0.0.1', 0), SERVER.Handler)
+        thread = threading_module.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            payload = json_module.dumps({'image_name': 'source.png', 'target': 'bogus'}).encode('utf-8')
+            request = url_request.Request(
+                'http://127.0.0.1:' + str(server.server_port) + '/api/extract-reference',
+                data=payload,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            try:
+                url_request.urlopen(request, timeout=10)
+                self.fail('expected HTTP 400 for an unknown extraction target')
+            except url_error.HTTPError as exc:
+                self.assertEqual(400, exc.code)
+                body = json_module.loads(exc.read().decode('utf-8'))
+                self.assertIn('Unknown extraction target', body.get('error', ''))
+        finally:
+            server.shutdown()
+            thread.join(timeout=10)
 if __name__ == "__main__":
     unittest.main()
