@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.7 - 2026-09-03
+
+- Report a busy render queue as HTTP 429 instead of 500 when the vision model refuses to load next to an active render.
+
 ## 1.9.6 - 2026-09-03
 
 - Threaded render seeds end to end: the generate endpoint now returns per-item seeds, outputs store them, and rendering an approved 360p preview at standard quality reuses its seed for a faithful reproduction.

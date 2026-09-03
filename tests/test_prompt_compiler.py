@@ -248,6 +248,19 @@ class PromptCompilerTests(unittest.TestCase):
         self.assertEqual('tiny', model['key'])
         self.assertIn(('/api/v1/utilities/expand-prompt', 'POST'), calls)
         self.assertIn(('/api/v2/models/empty_model_cache', 'POST'), calls)
+    def test_busy_render_queue_is_reported_as_429_not_500(self):
+        busy = {'queue': {'pending': 1, 'in_progress': 0}, 'processor': {'is_processing': True}}
+        idle = {'queue': {'pending': 0, 'in_progress': 0}, 'processor': {'is_processing': False}}
+        with patch.object(SERVER, 'invoke_json', return_value=busy):
+            with self.assertRaises(SERVER.QueueBusyError):
+                SERVER.ensure_generation_queue_idle()
+        with patch.object(SERVER, 'invoke_json', return_value=idle):
+            SERVER.ensure_generation_queue_idle()
+        busy_error = SERVER.QueueBusyError('busy')
+        self.assertEqual(429, SERVER.invoke_error_status(busy_error))
+        self.assertEqual('busy', SERVER.invoke_error_message(busy_error))
+
+
     def test_generate_response_reports_stable_per_item_seeds(self):
         import json as json_module
         import threading as threading_module

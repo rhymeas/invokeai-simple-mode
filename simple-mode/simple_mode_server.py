@@ -253,7 +253,13 @@ def invoke_error_message(error):
     return str(error)
 
 
+class QueueBusyError(RuntimeError):
+    pass
+
+
 def invoke_error_status(error):
+    if isinstance(error, QueueBusyError):
+        return 429
     if isinstance(error, urllib.error.HTTPError):
         if error.code in (400, 404, 409, 422):
             return error.code
@@ -1823,7 +1829,7 @@ def ensure_generation_queue_idle():
     queue = status.get("queue") or {}
     processor = status.get("processor") or {}
     if int(queue.get("pending") or 0) > 0 or int(queue.get("in_progress") or 0) > 0 or processor.get("is_processing"):
-        raise RuntimeError("Wait for the current InvokeAI render queue to finish before running the vision model.")
+        raise QueueBusyError("Wait for the current InvokeAI render queue to finish before running the vision model.")
 
 
 class Handler(BaseHTTPRequestHandler):
